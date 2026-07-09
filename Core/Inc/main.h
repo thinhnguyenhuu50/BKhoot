@@ -61,8 +61,18 @@ void Error_Handler(void);
 #define LED_DEBUG_GPIO_Port GPIOE
 #define FSMC_RES_Pin GPIO_PIN_13
 #define FSMC_RES_GPIO_Port GPIOC
+#define T_CS_Pin GPIO_PIN_7
+#define T_CS_GPIO_Port GPIOG
+#define T_CLK_Pin GPIO_PIN_8
+#define T_CLK_GPIO_Port GPIOG
+#define T_PEN_Pin GPIO_PIN_8
+#define T_PEN_GPIO_Port GPIOC
+#define T_MOSI_Pin GPIO_PIN_9
+#define T_MOSI_GPIO_Port GPIOC
 #define FSMC_BLK_Pin GPIO_PIN_8
 #define FSMC_BLK_GPIO_Port GPIOA
+#define T_MISO_Pin GPIO_PIN_12
+#define T_MISO_GPIO_Port GPIOC
 
 /* USER CODE BEGIN Private defines */
 

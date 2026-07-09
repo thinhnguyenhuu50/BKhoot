@@ -54,6 +54,13 @@ const osThreadAttr_t ledBlinkingTask_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
+/* Definitions for lvglExampleTask */
+osThreadId_t lvglExampleTaskHandle;
+const osThreadAttr_t lvglExampleTask_attributes = {
+  .name = "lvglExampleTask",
+  .stack_size = 1024 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -61,6 +68,7 @@ const osThreadAttr_t ledBlinkingTask_attributes = {
 /* USER CODE END FunctionPrototypes */
 
 void StartTask_LedBlinking(void *argument);
+extern void StartTask_LVGLExample(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -94,6 +102,9 @@ void MX_FREERTOS_Init(void) {
   /* creation of ledBlinkingTask */
   ledBlinkingTaskHandle = osThreadNew(StartTask_LedBlinking, NULL, &ledBlinkingTask_attributes);
 
+  /* creation of lvglExampleTask */
+  lvglExampleTaskHandle = osThreadNew(StartTask_LVGLExample, NULL, &lvglExampleTask_attributes);
+
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
@@ -125,6 +136,10 @@ void StartTask_LedBlinking(void *argument)
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
-
+osStatus_t osThreadDetach(osThreadId_t thread_id)
+{
+    (void)thread_id;
+    return osOK;
+}
 /* USER CODE END Application */
 
