@@ -1,0 +1,56 @@
+# ====================================================================
+# Compiled Object & Binary Files (GCC ARM Embedded Toolchain)
+# ====================================================================
+*.o
+*.obj
+*.d
+*.crf
+*.lnp
+*.axf
+*.elf
+*.hex
+*.bin
+*.map
+*.lst
+*.su
+*.gpdsc
+
+# ====================================================================
+# CMake Build Artifacts
+# ====================================================================
+# Ignore the entire build directory where CMake generates files and binaries
+/build/
+/Build/
+
+# Backup rules if build files are generated in the root directory
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+
+# ====================================================================
+# Visual Studio Code Settings
+# ====================================================================
+.vscode/
+!.vscode/extensions.json
+
+# Local history / crash dumps
+.history/
+*.cws
+
+# ====================================================================
+# STM32CubeMX / CubeIDE Artifacts (If used alongside CMake)
+# ====================================================================
+# Do NOT ignore your .ioc file, it is required to regenerate peripheral code!
+.mxproject
+
+# ====================================================================
+# Operating System & Miscellaneous Files
+# ====================================================================
+.DS_Store
+Thumbs.db
+*.bak
+*.log
