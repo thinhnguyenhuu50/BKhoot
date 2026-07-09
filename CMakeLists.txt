@@ -47,6 +47,9 @@ target_include_directories(lvgl PRIVATE
     ${CMAKE_SOURCE_DIR}/Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2   # for cmsis_os2.h
 )
 
+# Add the driver subdirectory
+add_subdirectory(Drivers/LCD)
+
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
@@ -76,6 +79,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
     # Add user defined libraries
     lvgl
+    LCD
 )
 
 # =========================================================================
