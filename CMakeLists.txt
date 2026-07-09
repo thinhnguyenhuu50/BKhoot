@@ -37,6 +37,16 @@ add_executable(${CMAKE_PROJECT_NAME})
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
 
+# Tell LVGL where lv_conf.h resides
+set(LV_BUILD_CONF_DIR "${CMAKE_SOURCE_DIR}/Middlewares/Third_Party")
+
+# Add LVGL library
+add_subdirectory(Middlewares/Third_Party/lvgl)
+
+target_include_directories(lvgl PRIVATE
+    ${CMAKE_SOURCE_DIR}/Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2   # for cmsis_os2.h
+)
+
 # Link directories setup
 target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
@@ -65,6 +75,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
 
     # Add user defined libraries
+    lvgl
 )
 
 # =========================================================================
