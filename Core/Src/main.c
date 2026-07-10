@@ -21,12 +21,14 @@
 #include "cmsis_os.h"
 #include "i2c.h"
 #include "tim.h"
+#include "usart.h"
 #include "gpio.h"
 #include "fsmc.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -36,7 +38,14 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+/* Define the size you want for the internal heap */
+#define INT_SRAM_SIZE (40 * 1024)
+/* The compiler safely places this array in internal RAM without overwriting globals */
+static uint8_t ucInternalHeap[INT_SRAM_SIZE];
 
+/* Define the 512KB External SRAM on FSMC Bank 1 Sector 3 (NE3) */
+#define EXT_SRAM_ADDRESS    0x68000000 
+#define EXT_SRAM_SIZE       (512 * 1024)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -47,14 +56,19 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+/* Define the custom heap regions array */
+HeapRegion_t xHeapRegions[] = {
+  // { ( uint8_t * ) ucInternalHeap, INT_SRAM_SIZE },
+  { ( uint8_t * ) EXT_SRAM_ADDRESS, EXT_SRAM_SIZE },
+  { NULL, 0 } /* Must be terminated with a NULL pointer and 0 size */
+};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
-
+void rs232_SendString(uint8_t* str);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -94,12 +108,15 @@ int main(void)
   MX_FSMC_Init();
   MX_I2C1_Init();
   MX_TIM1_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  vPortDefineHeapRegions(xHeapRegions);
+  rs232_SendString((uint8_t*)"Initialize heap regions\r\n");
   /* USER CODE END 2 */
 
   /* Init scheduler */
   osKernelInitialize();  /* Call init function for freertos objects (in cmsis_os2.c) */
+  rs232_SendString((uint8_t*)"Initialize scheduler\r\n");
   MX_FREERTOS_Init();
 
   /* Start scheduler */
@@ -165,7 +182,11 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void rs232_SendString(uint8_t* str){
+  char buffer[256];
+  sprintf(buffer, "%s", str);
+  HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), 1000);
+}
 /* USER CODE END 4 */
 
 /**
