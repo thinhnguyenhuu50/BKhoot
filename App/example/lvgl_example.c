@@ -4,6 +4,9 @@ extern osMessageQueueId_t PotentiometerHandle;
 
 void StartTask_LVGLExample(void *argument)
 {
+    osThreadId_t task_id = osThreadGetId();
+    uint32_t last_stack_update = 0;
+
   lv_init();
   lv_tick_set_cb(HAL_GetTick);
   lcd_init(); 
@@ -25,10 +28,23 @@ void StartTask_LVGLExample(void *argument)
   lv_obj_t * screen = lv_screen_active();
   lv_obj_set_style_bg_color(screen, lv_color_hex(0x222222), LV_PART_MAIN); // Dark gray bg
 
+    lv_obj_t * stack_box = lv_obj_create(screen);
+    lv_obj_set_size(stack_box, 220, 44);
+    lv_obj_align(stack_box, LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_set_style_bg_color(stack_box, lv_color_hex(0x111111), LV_PART_MAIN);
+    lv_obj_set_style_border_color(stack_box, lv_color_hex(0x55AAFF), LV_PART_MAIN);
+    lv_obj_set_style_border_width(stack_box, 1, LV_PART_MAIN);
+    lv_obj_set_style_radius(stack_box, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(stack_box, 8, LV_PART_MAIN);
+
+    lv_obj_t * stack_label = lv_label_create(stack_box);
+    lv_obj_center(stack_label);
+    lv_label_set_text(stack_label, "Stack free: ...");
+
   // Create the button on the active screen
   lv_obj_t * btn = lv_button_create(screen);
   lv_obj_set_size(btn, 160, 60);
-  lv_obj_center(btn); // Put it right in the middle
+    lv_obj_align(btn, LV_ALIGN_CENTER, 0, 18); // Keep it below the stack box
 
   // Attach our callback function to the button
   lv_obj_add_event_cb(btn, btn_event_cb, LV_EVENT_ALL, NULL);
@@ -42,6 +58,14 @@ void StartTask_LVGLExample(void *argument)
   /* Infinite loop */
   for(;;)
   {
+        uint32_t now = HAL_GetTick();
+        if((now - last_stack_update) >= 250U)
+        {
+            uint32_t stack_free = osThreadGetStackSpace(task_id);
+            lv_label_set_text_fmt(stack_label, "Stack free: %lu bytes", (unsigned long)stack_free);
+            last_stack_update = now;
+        }
+
     lv_timer_handler(); // Let LVGL process UI updates
     osDelay(5);         // Yield 5ms to other tasks
   }
