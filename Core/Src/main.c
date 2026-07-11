@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
+#include "dma.h"
 #include "i2c.h"
 #include "tim.h"
 #include "usart.h"
@@ -41,7 +42,7 @@
 /* Define the size you want for the internal heap */
 #define INT_SRAM_SIZE (40 * 1024)
 /* The compiler safely places this array in internal RAM without overwriting globals */
-static uint8_t ucInternalHeap[INT_SRAM_SIZE];
+// static uint8_t ucInternalHeap[INT_SRAM_SIZE];
 
 /* Define the 512KB External SRAM on FSMC Bank 1 Sector 3 (NE3) */
 #define EXT_SRAM_ADDRESS    0x68000000 
@@ -69,6 +70,7 @@ void SystemClock_Config(void);
 void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
 void rs232_SendString(uint8_t* str);
+void HAL_DMA_TxCpltCallback(DMA_HandleTypeDef *hdma);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -105,6 +107,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_FSMC_Init();
   MX_I2C1_Init();
   MX_TIM1_Init();
@@ -112,11 +115,12 @@ int main(void)
   /* USER CODE BEGIN 2 */
   vPortDefineHeapRegions(xHeapRegions);
   rs232_SendString((uint8_t*)"Initialize heap regions\r\n");
+
+  HAL_DMA_RegisterCallback(&hdma_memtomem_dma2_stream0, HAL_DMA_XFER_CPLT_CB_ID, HAL_DMA_TxCpltCallback);
   /* USER CODE END 2 */
 
   /* Init scheduler */
   osKernelInitialize();  /* Call init function for freertos objects (in cmsis_os2.c) */
-  rs232_SendString((uint8_t*)"Initialize scheduler\r\n");
   MX_FREERTOS_Init();
 
   /* Start scheduler */

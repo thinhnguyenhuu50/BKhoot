@@ -38,7 +38,8 @@ add_executable(${CMAKE_PROJECT_NAME})
 add_subdirectory(cmake/stm32cubemx)
 
 # Tell LVGL where lv_conf.h resides
-set(LV_BUILD_CONF_DIR "${CMAKE_SOURCE_DIR}/Middlewares/Third_Party")
+# set(LV_BUILD_CONF_DIR "${CMAKE_SOURCE_DIR}/Middlewares/Third_Party")
+set(LV_BUILD_CONF_DIR "${CMAKE_SOURCE_DIR}/Middlewares/Third_Party" CACHE PATH "Path to LVGL config directory" FORCE)
 
 # Add LVGL library
 add_subdirectory(Middlewares/Third_Party/lvgl)

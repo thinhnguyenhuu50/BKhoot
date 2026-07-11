@@ -1,6 +1,19 @@
 #include "lvgl_example.h"
+#include "dma.h"
 
 extern osMessageQueueId_t PotentiometerHandle;
+
+static lv_display_t * current_disp;
+
+void HAL_DMA_TxCpltCallback(DMA_HandleTypeDef *hdma)
+{
+    if (hdma->Instance == DMA2_Stream0) {
+        // DMA transfer complete for our display flush
+        if (current_disp != NULL) {
+            lv_display_flush_ready(current_disp);
+        }
+    }
+}
 
 void StartTask_LVGLExample(void *argument)
 {
@@ -13,7 +26,7 @@ void StartTask_LVGLExample(void *argument)
   touch_init();
   // Setup Display
   lv_display_t * disp = lv_display_create(LCD_W, LCD_H);
-  static uint8_t draw_buf[LCD_W * (LCD_H / 10) * 2];
+  static uint8_t draw_buf[LCD_W * (LCD_H / 10) * 2]  __ALIGNED(4);
   lv_display_set_buffers(disp, draw_buf, NULL, sizeof(draw_buf), LV_DISPLAY_RENDER_MODE_PARTIAL);
   lv_display_set_flush_cb(disp, my_disp_flush);
 
@@ -87,14 +100,12 @@ void my_disp_flush(lv_display_t * disp, const lv_area_t * area, uint8_t * px_map
     uint32_t height = lv_area_get_height(area);
     uint32_t total_pixels = width * height;
 
-    // 3. Blast the pixels to the FSMC RAM
-    // Since FSMC is mapped directly to memory, we can write directly to the LCD_RAM register
-    for(uint32_t i = 0; i < total_pixels; i++) {
-        LCD->LCD_RAM = color_p[i]; 
-    }
+    // 3. Save the display pointer for the DMA interrupt
+    current_disp = disp;
 
-    // 4. IMPORTANT: Tell LVGL the transfer is complete
-    lv_display_flush_ready(disp);
+    // 4. Blast the pixels to the FSMC RAM
+    // Since FSMC is mapped directly to memory, we can write directly to the LCD_RAM register
+    HAL_DMA_Start_IT(&hdma_memtomem_dma2_stream0, (uint32_t)color_p, (uint32_t)&LCD->LCD_RAM, total_pixels);
 }
 
 // LVGL Touchpad Read Callback
