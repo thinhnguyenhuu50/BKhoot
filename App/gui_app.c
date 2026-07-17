@@ -1,6 +1,7 @@
 #include "gui_app.h"
 #include "game_logic.h"
 #include <stdio.h>
+#include "rs232.h"
 
 // Screen objects
 static lv_obj_t * scr_role_selection;
@@ -121,7 +122,20 @@ static void host_list_btn_cb(lv_event_t * e) {
 
 static void slave_answer_btn_cb(lv_event_t * e) {
     int answer_idx = (int)lv_event_get_user_data(e);
+    const char *colors[] = {"Red", "Blue", "Yellow", "Green"};
+    if (answer_idx >= 0 && answer_idx < 4) {
+        debug_log("Color chosen: %s\r\n", colors[answer_idx]);
+    }
     game_slave_submit_answer(answer_idx);
+}
+
+static void master_answer_btn_cb(lv_event_t * e) {
+    int answer_idx = (int)lv_event_get_user_data(e);
+    const char *colors[] = {"Red", "Blue", "Yellow", "Green"};
+    if (answer_idx >= 0 && answer_idx < 4) {
+        debug_log("Master chosen: %s\r\n", colors[answer_idx]);
+    }
+    // Master doesn't submit answer to itself
 }
 
 // --- Screen Implementations ---
@@ -243,6 +257,8 @@ void gui_load_master_question_screen(const char* question) {
         int x_ofs = (i % 2 == 0) ? -(btn_w/2 + padding/2) : (btn_w/2 + padding/2);
         int y_ofs = (i < 2) ? 140 : (140 + btn_h + padding);
         lv_obj_align(btn, LV_ALIGN_TOP_MID, x_ofs, y_ofs);
+        
+        lv_obj_add_event_cb(btn, master_answer_btn_cb, LV_EVENT_CLICKED, (void*)i);
     }
 
     lv_scr_load(scr_master_question);
@@ -445,7 +461,7 @@ void StartTask_LVGL(void *argument) {
     lv_indev_set_read_cb(indev, my_touchpad_read);
 
     gui_app_init();
-
+    debug_log("GUI initialized\r\n");
     for(;;) {
         lv_timer_handler();
         osDelay(5);
