@@ -28,8 +28,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
-#include <string.h>
+#include "rs232.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -40,9 +39,12 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 /* Define the size you want for the internal heap */
-#define INT_SRAM_SIZE (40 * 1024)
+// #define INT_SRAM_SIZE (40 * 1024)
 /* The compiler safely places this array in internal RAM without overwriting globals */
 // static uint8_t ucInternalHeap[INT_SRAM_SIZE];
+
+/* Place the heap array into the custom linker section we created */
+__attribute__((section(".ext_ram_data"))) uint8_t ucExternalHeap[ 500 * 1000 ]; // Reserving 500KB for FreeRTOS
 
 /* Define the 512KB External SRAM on FSMC Bank 1 Sector 3 (NE3) */
 #define EXT_SRAM_ADDRESS    0x68000000 
@@ -60,7 +62,7 @@
 /* Define the custom heap regions array */
 HeapRegion_t xHeapRegions[] = {
   // { ( uint8_t * ) ucInternalHeap, INT_SRAM_SIZE },
-  { ( uint8_t * ) EXT_SRAM_ADDRESS, EXT_SRAM_SIZE },
+  { ( uint8_t * ) ucExternalHeap, sizeof(ucExternalHeap) },
   { NULL, 0 } /* Must be terminated with a NULL pointer and 0 size */
 };
 /* USER CODE END PV */
@@ -69,7 +71,6 @@ HeapRegion_t xHeapRegions[] = {
 void SystemClock_Config(void);
 void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
-void rs232_SendString(uint8_t* str);
 void HAL_DMA_TxCpltCallback(DMA_HandleTypeDef *hdma);
 /* USER CODE END PFP */
 
@@ -113,9 +114,18 @@ int main(void)
   MX_TIM1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  vPortDefineHeapRegions(xHeapRegions);
-  rs232_SendString((uint8_t*)"Initialize heap regions\r\n");
+// Byte-level SRAM test
+volatile uint8_t *sram8 = (volatile uint8_t *)0x68000000;
+uint32_t byte_errors = 0;
+for (uint32_t i = 0; i < 2048; i++) {
+    sram8[i] = (uint8_t)(i & 0xFF);
+}
+for (uint32_t i = 0; i < 2048; i++) {
+    if (sram8[i] != (uint8_t)(i & 0xFF)) byte_errors++;
+}
+debug_log("[SRAM] Byte test: %lu/2048 errors\r\n", byte_errors);
 
+  vPortDefineHeapRegions(xHeapRegions);
   HAL_DMA_RegisterCallback(&hdma_memtomem_dma2_stream0, HAL_DMA_XFER_CPLT_CB_ID, HAL_DMA_TxCpltCallback);
   /* USER CODE END 2 */
 
@@ -186,11 +196,7 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-void rs232_SendString(uint8_t* str){
-  char buffer[256];
-  sprintf(buffer, "%s", str);
-  HAL_UART_Transmit(&huart1, (uint8_t*)buffer, strlen(buffer), 1000);
-}
+
 /* USER CODE END 4 */
 
 /**

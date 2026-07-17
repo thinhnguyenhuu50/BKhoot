@@ -12,6 +12,8 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 
+set(CMAKE_C_COMPILER "/usr/bin/arm-none-eabi-gcc" CACHE PATH "..." FORCE)
+
 
 # Define the build type
 if(NOT CMAKE_BUILD_TYPE)
@@ -60,6 +62,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Drivers/LCD/lcd.c
     ${CMAKE_SOURCE_DIR}/Drivers/Touch/touch.c
     ${CMAKE_SOURCE_DIR}/Drivers/EEPROM/at24c.c
+    ${CMAKE_SOURCE_DIR}/Drivers/Rs232/rs232.c
 )
 
 # Add include paths
@@ -69,6 +72,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Drivers/LCD
     ${CMAKE_SOURCE_DIR}/Drivers/Touch
     ${CMAKE_SOURCE_DIR}/Drivers/EEPROM
+    ${CMAKE_SOURCE_DIR}/Drivers/Rs232
 )
 
 # Add project symbols (macros)

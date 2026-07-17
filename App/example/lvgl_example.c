@@ -1,5 +1,6 @@
 #include "lvgl_example.h"
 #include "dma.h"
+#include "rs232.h"
 
 extern osMessageQueueId_t PotentiometerHandle;
 

@@ -58,6 +58,7 @@ MEMORY
 RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 128K
 CCMRAM (xrw)      : ORIGIN = 0x10000000, LENGTH = 64K
 FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 1024K
+EXTSRAM (xrw)  : ORIGIN = 0x68000000, LENGTH = 512K
 }
 
 /* Highest address of the user mode stack */
@@ -257,7 +258,14 @@ SECTIONS
     . = ALIGN(8);
   } >RAM
 
-
+  /* Map custom external RAM data */
+  .ext_ram_data (NOLOAD) :
+  {
+    . = ALIGN(4);
+    *(.ext_ram_data)
+    *(.ext_ram_data*)
+    . = ALIGN(4);
+  } >EXTSRAM
 
   /* Remove information from the standard libraries */
   /DISCARD/ :

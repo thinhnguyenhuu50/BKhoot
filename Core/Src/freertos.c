@@ -58,8 +58,13 @@ const osThreadAttr_t ledBlinkingTask_attributes = {
 osThreadId_t lvglExampleTaskHandle;
 const osThreadAttr_t lvglExampleTask_attributes = {
   .name = "lvglExampleTask",
-  .stack_size = 1024 * 4,
+  .stack_size = 4096 * 4,
   .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for uart_tx_sem */
+osSemaphoreId_t uart_tx_semHandle;
+const osSemaphoreAttr_t uart_tx_sem_attributes = {
+  .name = "uart_tx_sem"
 };
 
 /* Private function prototypes -----------------------------------------------*/
@@ -85,6 +90,10 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
   /* USER CODE END RTOS_MUTEX */
+
+  /* Create the semaphores(s) */
+  /* creation of uart_tx_sem */
+  uart_tx_semHandle = osSemaphoreNew(1, 1, &uart_tx_sem_attributes);
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */

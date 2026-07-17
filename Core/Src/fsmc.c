@@ -62,7 +62,7 @@ void MX_FSMC_Init(void)
   hsram1.Init.WriteBurst = FSMC_WRITE_BURST_DISABLE;
   hsram1.Init.PageSize = FSMC_PAGE_SIZE_NONE;
   /* Timing */
-  Timing.AddressSetupTime = 0xf;
+  Timing.AddressSetupTime = 15;
   Timing.AddressHoldTime = 15;
   Timing.DataSetupTime = 60;
   Timing.BusTurnAroundDuration = 0;
@@ -72,7 +72,7 @@ void MX_FSMC_Init(void)
   /* ExtTiming */
   ExtTiming.AddressSetupTime = 8;
   ExtTiming.AddressHoldTime = 15;
-  ExtTiming.DataSetupTime = 9;
+  ExtTiming.DataSetupTime = 255;
   ExtTiming.BusTurnAroundDuration = 15;
   ExtTiming.CLKDivision = 16;
   ExtTiming.DataLatency = 17;
@@ -106,7 +106,7 @@ void MX_FSMC_Init(void)
   Timing.AddressSetupTime = 2;
   Timing.AddressHoldTime = 15;
   Timing.DataSetupTime = 3;
-  Timing.BusTurnAroundDuration = 1;
+  Timing.BusTurnAroundDuration = 15;
   Timing.CLKDivision = 16;
   Timing.DataLatency = 17;
   Timing.AccessMode = FSMC_ACCESS_MODE_A;
@@ -178,11 +178,13 @@ static void HAL_FSMC_MspInit(void){
   PD5   ------> FSMC_NWE
   PD7   ------> FSMC_NE1
   PG10   ------> FSMC_NE3
+  PE0   ------> FSMC_NBL0
+  PE1   ------> FSMC_NBL1
   */
   /* GPIO_InitStruct */
   GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9
                           |GPIO_PIN_10|GPIO_PIN_11|GPIO_PIN_12|GPIO_PIN_13
-                          |GPIO_PIN_14|GPIO_PIN_15;
+                          |GPIO_PIN_14|GPIO_PIN_15|GPIO_PIN_0|GPIO_PIN_1;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
@@ -292,11 +294,13 @@ static void HAL_FSMC_MspDeInit(void){
   PD5   ------> FSMC_NWE
   PD7   ------> FSMC_NE1
   PG10   ------> FSMC_NE3
+  PE0   ------> FSMC_NBL0
+  PE1   ------> FSMC_NBL1
   */
 
   HAL_GPIO_DeInit(GPIOE, GPIO_PIN_3|GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_9
                           |GPIO_PIN_10|GPIO_PIN_11|GPIO_PIN_12|GPIO_PIN_13
-                          |GPIO_PIN_14|GPIO_PIN_15);
+                          |GPIO_PIN_14|GPIO_PIN_15|GPIO_PIN_0|GPIO_PIN_1);
 
   HAL_GPIO_DeInit(GPIOF, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3
                           |GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_12|GPIO_PIN_13
