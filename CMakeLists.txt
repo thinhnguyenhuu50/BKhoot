@@ -58,7 +58,8 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
-    ${CMAKE_SOURCE_DIR}/App/example/lvgl_example.c
+    ${CMAKE_SOURCE_DIR}/App/gui_app.c
+    ${CMAKE_SOURCE_DIR}/App/game_logic.c
     ${CMAKE_SOURCE_DIR}/Drivers/LCD/lcd.c
     ${CMAKE_SOURCE_DIR}/Drivers/Touch/touch.c
     ${CMAKE_SOURCE_DIR}/Drivers/EEPROM/at24c.c
@@ -68,7 +69,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
-    ${CMAKE_SOURCE_DIR}/App/example
+    ${CMAKE_SOURCE_DIR}/App
     ${CMAKE_SOURCE_DIR}/Drivers/LCD
     ${CMAKE_SOURCE_DIR}/Drivers/Touch
     ${CMAKE_SOURCE_DIR}/Drivers/EEPROM

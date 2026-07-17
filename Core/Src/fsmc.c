@@ -62,7 +62,7 @@ void MX_FSMC_Init(void)
   hsram1.Init.WriteBurst = FSMC_WRITE_BURST_DISABLE;
   hsram1.Init.PageSize = FSMC_PAGE_SIZE_NONE;
   /* Timing */
-  Timing.AddressSetupTime = 15;
+  Timing.AddressSetupTime = 0xf;
   Timing.AddressHoldTime = 15;
   Timing.DataSetupTime = 60;
   Timing.BusTurnAroundDuration = 0;
@@ -72,8 +72,8 @@ void MX_FSMC_Init(void)
   /* ExtTiming */
   ExtTiming.AddressSetupTime = 8;
   ExtTiming.AddressHoldTime = 15;
-  ExtTiming.DataSetupTime = 255;
-  ExtTiming.BusTurnAroundDuration = 15;
+  ExtTiming.DataSetupTime = 9;
+  ExtTiming.BusTurnAroundDuration = 0;
   ExtTiming.CLKDivision = 16;
   ExtTiming.DataLatency = 17;
   ExtTiming.AccessMode = FSMC_ACCESS_MODE_A;

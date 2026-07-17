@@ -55,17 +55,36 @@ const osThreadAttr_t ledBlinkingTask_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for lvglExampleTask */
-osThreadId_t lvglExampleTaskHandle;
-uint32_t lvglExampleTaskBuffer[ 4096 ];
-osStaticThreadDef_t lvglExampleTaskControlBlock;
-const osThreadAttr_t lvglExampleTask_attributes = {
-  .name = "lvglExampleTask",
-  .cb_mem = &lvglExampleTaskControlBlock,
-  .cb_size = sizeof(lvglExampleTaskControlBlock),
-  .stack_mem = &lvglExampleTaskBuffer[0],
-  .stack_size = sizeof(lvglExampleTaskBuffer),
+/* Definitions for GUI_Task */
+osThreadId_t GUI_TaskHandle;
+uint32_t GUI_TaskBuffer[ 4096 ];
+osStaticThreadDef_t GUI_TaskControlBlock;
+const osThreadAttr_t GUI_Task_attributes = {
+  .name = "GUI_Task",
+  .cb_mem = &GUI_TaskControlBlock,
+  .cb_size = sizeof(GUI_TaskControlBlock),
+  .stack_mem = &GUI_TaskBuffer[0],
+  .stack_size = sizeof(GUI_TaskBuffer),
   .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for Communication_T */
+osThreadId_t Communication_THandle;
+const osThreadAttr_t Communication_T_attributes = {
+  .name = "Communication_T",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for Game_Logic_Task */
+osThreadId_t Game_Logic_TaskHandle;
+const osThreadAttr_t Game_Logic_Task_attributes = {
+  .name = "Game_Logic_Task",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for commQueue */
+osMessageQueueId_t commQueueHandle;
+const osMessageQueueAttr_t commQueue_attributes = {
+  .name = "commQueue"
 };
 /* Definitions for uart_tx_sem */
 osSemaphoreId_t uart_tx_semHandle;
@@ -79,7 +98,9 @@ const osSemaphoreAttr_t uart_tx_sem_attributes = {
 /* USER CODE END FunctionPrototypes */
 
 void StartTask_LedBlinking(void *argument);
-extern void StartTask_LVGLExample(void *argument);
+extern void StartTask_LVGL(void *argument);
+extern void StartTask_COMM(void *argument);
+extern void StartTask_GAME(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -109,6 +130,10 @@ void MX_FREERTOS_Init(void) {
   /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
 
+  /* Create the queue(s) */
+  /* creation of commQueue */
+  commQueueHandle = osMessageQueueNew (4, sizeof(uint16_t), &commQueue_attributes);
+
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
@@ -117,8 +142,14 @@ void MX_FREERTOS_Init(void) {
   /* creation of ledBlinkingTask */
   ledBlinkingTaskHandle = osThreadNew(StartTask_LedBlinking, NULL, &ledBlinkingTask_attributes);
 
-  /* creation of lvglExampleTask */
-  lvglExampleTaskHandle = osThreadNew(StartTask_LVGLExample, NULL, &lvglExampleTask_attributes);
+  /* creation of GUI_Task */
+  GUI_TaskHandle = osThreadNew(StartTask_LVGL, NULL, &GUI_Task_attributes);
+
+  /* creation of Communication_T */
+  Communication_THandle = osThreadNew(StartTask_COMM, NULL, &Communication_T_attributes);
+
+  /* creation of Game_Logic_Task */
+  Game_Logic_TaskHandle = osThreadNew(StartTask_GAME, NULL, &Game_Logic_Task_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
