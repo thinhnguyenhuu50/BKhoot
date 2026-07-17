@@ -18,13 +18,14 @@ void HAL_DMA_TxCpltCallback(DMA_HandleTypeDef *hdma)
 
 void StartTask_LVGLExample(void *argument)
 {
-    osThreadId_t task_id = osThreadGetId();
-    uint32_t last_stack_update = 0;
+  osThreadId_t task_id = osThreadGetId();
+  uint32_t last_stack_update = 0;
 
   lv_init();
   lv_tick_set_cb(HAL_GetTick);
   lcd_init(); 
-  touch_init();
+  touch_Init();
+  
   // Setup Display
   lv_display_t * disp = lv_display_create(LCD_W, LCD_H);
   static uint8_t draw_buf[LCD_W * (LCD_H / 10) * 2]  __ALIGNED(4);

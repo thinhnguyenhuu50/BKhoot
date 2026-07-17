@@ -104,17 +104,6 @@ int main(void)
   MX_TIM1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-// Byte-level SRAM test
-volatile uint8_t *sram8 = (volatile uint8_t *)0x68000000;
-uint32_t byte_errors = 0;
-for (uint32_t i = 0; i < 2048; i++) {
-    sram8[i] = (uint8_t)(i & 0xFF);
-}
-for (uint32_t i = 0; i < 2048; i++) {
-    if (sram8[i] != (uint8_t)(i & 0xFF)) byte_errors++;
-}
-debug_log("[SRAM] Byte test: %lu/2048 errors\r\n", byte_errors);
-
   vPortDefineHeapRegions(xHeapRegions);
   HAL_DMA_RegisterCallback(&hdma_memtomem_dma2_stream0, HAL_DMA_XFER_CPLT_CB_ID, HAL_DMA_TxCpltCallback);
   /* USER CODE END 2 */

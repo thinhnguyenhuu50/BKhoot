@@ -117,9 +117,89 @@ static uint8_t TP_Get_Adjdata(void) {
 	return 0;
 }
 
-void touch_init(void) {
+void touch_Init(void) {
 	at24c_init();
 	TP_Get_Adjdata(); // Load your saved calibration factors
+}
+
+static void draw_cross(uint16_t x, uint16_t y, uint16_t color) {
+	for(int i = -10; i <= 10; i++) {
+		if((x + i) >= 0 && (x + i) < LCD_W) {
+			lcd_set_address(x + i, y, x + i, y);
+			LCD->LCD_RAM = color;
+		}
+		if((y + i) >= 0 && (y + i) < LCD_H) {
+			lcd_set_address(x, y + i, x, y + i);
+			LCD->LCD_RAM = color;
+		}
+	}
+}
+
+static void clear_screen(uint16_t color) {
+	lcd_set_address(0, 0, LCD_W - 1, LCD_H - 1);
+	for(uint32_t i = 0; i < LCD_W * LCD_H; i++) {
+		LCD->LCD_RAM = color;
+	}
+}
+
+void touch_Calibrate(void) {
+	uint16_t pts_x[4] = {20, LCD_W - 20, 20, LCD_W - 20};
+	uint16_t pts_y[4] = {20, 20, LCD_H - 20, LCD_H - 20};
+	uint16_t raw_x[4], raw_y[4];
+	
+	clear_screen(0xFFFF); // White background
+	
+	for(int i = 0; i < 4; i++) {
+		draw_cross(pts_x[i], pts_y[i], 0xF800); // Red cross
+		
+		// Wait for touch
+		while(HAL_GPIO_ReadPin(T_PEN_GPIO_Port, T_PEN_Pin) != GPIO_PIN_RESET) {
+			HAL_Delay(10);
+		}
+		
+		uint16_t rx, ry;
+		// Wait for valid read
+		while(!TP_Read_XY2(&rx, &ry)) {
+			HAL_Delay(10);
+		}
+		raw_x[i] = rx;
+		raw_y[i] = ry;
+		
+		// Wait for release
+		while(HAL_GPIO_ReadPin(T_PEN_GPIO_Port, T_PEN_Pin) == GPIO_PIN_RESET) {
+			HAL_Delay(10);
+		}
+		
+		draw_cross(pts_x[i], pts_y[i], 0xFFFF); // Erase cross
+		HAL_Delay(500); // Wait a bit before next point
+	}
+	
+	// Calculate calibration factors
+	float x_fac1 = (float)((int32_t)pts_x[1] - (int32_t)pts_x[0]) / (float)((int32_t)raw_x[1] - (int32_t)raw_x[0]);
+	float x_fac2 = (float)((int32_t)pts_x[3] - (int32_t)pts_x[2]) / (float)((int32_t)raw_x[3] - (int32_t)raw_x[2]);
+	xfac = (x_fac1 + x_fac2) / 2.0f;
+	
+	float y_fac1 = (float)((int32_t)pts_y[2] - (int32_t)pts_y[0]) / (float)((int32_t)raw_y[2] - (int32_t)raw_y[0]);
+	float y_fac2 = (float)((int32_t)pts_y[3] - (int32_t)pts_y[1]) / (float)((int32_t)raw_y[3] - (int32_t)raw_y[1]);
+	yfac = (y_fac1 + y_fac2) / 2.0f;
+	
+	short x_off1 = pts_x[0] - xfac * raw_x[0];
+	short x_off2 = pts_x[1] - xfac * raw_x[1];
+	short x_off3 = pts_x[2] - xfac * raw_x[2];
+	short x_off4 = pts_x[3] - xfac * raw_x[3];
+	xoff = (x_off1 + x_off2 + x_off3 + x_off4) / 4;
+	
+	short y_off1 = pts_y[0] - yfac * raw_y[0];
+	short y_off2 = pts_y[1] - yfac * raw_y[1];
+	short y_off3 = pts_y[2] - yfac * raw_y[2];
+	short y_off4 = pts_y[3] - yfac * raw_y[3];
+	yoff = (y_off1 + y_off2 + y_off3 + y_off4) / 4;
+	
+	// Save to EEPROM
+	at24c_Write(SAVE_ADDR_BASE, (uint8_t*)&xfac, 14);
+	at24c_WriteOneByte(SAVE_ADDR_BASE+14, DFT_SCAN_DIR);
+	
+	clear_screen(0x0000); // Clear to black at the end
 }
 
 void touch_Scan(void) {

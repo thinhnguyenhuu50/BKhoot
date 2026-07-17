@@ -7,7 +7,8 @@
 
 #include "main.h"
 
-void touch_init(void);
+void touch_Init(void);
+void touch_Calibrate(void);
 void touch_Scan(void);
 uint8_t touch_IsTouched(void);
 uint16_t touch_GetX(void);
