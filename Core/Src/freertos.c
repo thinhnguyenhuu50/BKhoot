@@ -29,6 +29,7 @@
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
+typedef StaticTask_t osStaticThreadDef_t;
 /* USER CODE BEGIN PTD */
 
 /* USER CODE END PTD */
@@ -56,9 +57,14 @@ const osThreadAttr_t ledBlinkingTask_attributes = {
 };
 /* Definitions for lvglExampleTask */
 osThreadId_t lvglExampleTaskHandle;
+uint32_t lvglExampleTaskBuffer[ 4096 ];
+osStaticThreadDef_t lvglExampleTaskControlBlock;
 const osThreadAttr_t lvglExampleTask_attributes = {
   .name = "lvglExampleTask",
-  .stack_size = 4096 * 4,
+  .cb_mem = &lvglExampleTaskControlBlock,
+  .cb_size = sizeof(lvglExampleTaskControlBlock),
+  .stack_mem = &lvglExampleTaskBuffer[0],
+  .stack_size = sizeof(lvglExampleTaskBuffer),
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for uart_tx_sem */

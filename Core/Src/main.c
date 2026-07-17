@@ -38,17 +38,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-/* Define the size you want for the internal heap */
-// #define INT_SRAM_SIZE (40 * 1024)
-/* The compiler safely places this array in internal RAM without overwriting globals */
-// static uint8_t ucInternalHeap[INT_SRAM_SIZE];
-
 /* Place the heap array into the custom linker section we created */
-__attribute__((section(".ext_ram_data"))) uint8_t ucExternalHeap[ 500 * 1000 ]; // Reserving 500KB for FreeRTOS
-
-/* Define the 512KB External SRAM on FSMC Bank 1 Sector 3 (NE3) */
-#define EXT_SRAM_ADDRESS    0x68000000 
-#define EXT_SRAM_SIZE       (512 * 1024)
+__attribute__((section(".ext_ram_data"))) uint8_t ucExternalHeap[ 512 * 1024 ];
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -61,7 +52,6 @@ __attribute__((section(".ext_ram_data"))) uint8_t ucExternalHeap[ 500 * 1000 ]; 
 /* USER CODE BEGIN PV */
 /* Define the custom heap regions array */
 HeapRegion_t xHeapRegions[] = {
-  // { ( uint8_t * ) ucInternalHeap, INT_SRAM_SIZE },
   { ( uint8_t * ) ucExternalHeap, sizeof(ucExternalHeap) },
   { NULL, 0 } /* Must be terminated with a NULL pointer and 0 size */
 };
