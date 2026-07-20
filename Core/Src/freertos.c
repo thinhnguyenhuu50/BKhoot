@@ -81,10 +81,22 @@ const osThreadAttr_t Game_Logic_Task_attributes = {
   .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
+/* Definitions for CommandParser */
+osThreadId_t CommandParserHandle;
+const osThreadAttr_t CommandParser_attributes = {
+  .name = "CommandParser",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 /* Definitions for commQueue */
 osMessageQueueId_t commQueueHandle;
 const osMessageQueueAttr_t commQueue_attributes = {
   .name = "commQueue"
+};
+/* Definitions for uartRxQueue */
+osMessageQueueId_t uartRxQueueHandle;
+const osMessageQueueAttr_t uartRxQueue_attributes = {
+  .name = "uartRxQueue"
 };
 /* Definitions for uart_tx_sem */
 osSemaphoreId_t uart_tx_semHandle;
@@ -101,6 +113,7 @@ void StartTask_LedBlinking(void *argument);
 extern void StartTask_LVGL(void *argument);
 extern void StartTask_COMM(void *argument);
 extern void StartTask_GAME(void *argument);
+extern void StartTask_CommandParser(void *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -134,6 +147,9 @@ void MX_FREERTOS_Init(void) {
   /* creation of commQueue */
   commQueueHandle = osMessageQueueNew (4, sizeof(uint16_t), &commQueue_attributes);
 
+  /* creation of uartRxQueue */
+  uartRxQueueHandle = osMessageQueueNew (3, sizeof(uint16_t), &uartRxQueue_attributes);
+
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
@@ -150,6 +166,9 @@ void MX_FREERTOS_Init(void) {
 
   /* creation of Game_Logic_Task */
   Game_Logic_TaskHandle = osThreadNew(StartTask_GAME, NULL, &Game_Logic_Task_attributes);
+
+  /* creation of CommandParser */
+  CommandParserHandle = osThreadNew(StartTask_CommandParser, NULL, &CommandParser_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */

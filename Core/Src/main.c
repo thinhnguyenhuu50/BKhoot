@@ -106,6 +106,13 @@ int main(void)
   /* USER CODE BEGIN 2 */
   vPortDefineHeapRegions(xHeapRegions);
   HAL_DMA_RegisterCallback(&hdma_memtomem_dma2_stream0, HAL_DMA_XFER_CPLT_CB_ID, HAL_DMA_TxCpltCallback);
+    
+  // Start receiving data into rx_buffer. 
+  // It will trigger an interrupt when the line goes IDLE.
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart1, rx_buffer, RX_BUFFER_SIZE);
+  // Optional: Disable the Half-Transfer interrupt if you don't need it 
+  // to save CPU cycles (recommended).
+  __HAL_DMA_DISABLE_IT(huart1.hdmarx, DMA_IT_HT); 
   /* USER CODE END 2 */
 
   /* Init scheduler */
