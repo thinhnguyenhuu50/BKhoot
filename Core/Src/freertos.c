@@ -187,5 +187,54 @@ osStatus_t osThreadDetach(osThreadId_t thread_id)
     (void)thread_id;
     return osOK;
 }
+
+#include <string.h>
+
+#define HEAP_WRAP_OFFSET 8
+
+void* __wrap_malloc(size_t size) {
+    void *p = pvPortMalloc(size + HEAP_WRAP_OFFSET);
+    if (p != NULL) {
+        *(size_t*)p = size;
+        return (void*)((uint8_t*)p + HEAP_WRAP_OFFSET);
+    }
+    return NULL;
+}
+
+void __wrap_free(void* ptr) {
+    if (ptr != NULL) {
+        void *p = (uint8_t*)ptr - HEAP_WRAP_OFFSET;
+        vPortFree(p);
+    }
+}
+
+void* __wrap_realloc(void* ptr, size_t new_size) {
+    if (new_size == 0) {
+        __wrap_free(ptr);
+        return NULL;
+    }
+    if (ptr == NULL) {
+        return __wrap_malloc(new_size);
+    }
+    
+    void *p = (uint8_t*)ptr - HEAP_WRAP_OFFSET;
+    size_t old_size = *(size_t*)p;
+    
+    void *new_ptr = __wrap_malloc(new_size);
+    if (new_ptr != NULL) {
+        memcpy(new_ptr, ptr, (old_size < new_size) ? old_size : new_size);
+        __wrap_free(ptr);
+    }
+    return new_ptr;
+}
+
+void* __wrap_calloc(size_t num, size_t size) {
+    size_t total = num * size;
+    void *ptr = __wrap_malloc(total);
+    if (ptr != NULL) {
+        memset(ptr, 0, total);
+    }
+    return ptr;
+}
 /* USER CODE END Application */
 

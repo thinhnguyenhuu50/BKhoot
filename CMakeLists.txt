@@ -92,6 +92,14 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     lvgl
 )
 
+# Wrap standard library allocator functions to our custom implementations in freertos.c
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
+    -Wl,--wrap,malloc
+    -Wl,--wrap,free
+    -Wl,--wrap,realloc
+    -Wl,--wrap,calloc
+)
+
 # =========================================================================
 # Custom Build Steps & Targets
 # =========================================================================
