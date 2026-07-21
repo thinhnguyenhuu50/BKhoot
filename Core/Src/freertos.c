@@ -85,8 +85,8 @@ const osThreadAttr_t Game_Logic_Task_attributes = {
 osThreadId_t CommandParserHandle;
 const osThreadAttr_t CommandParser_attributes = {
   .name = "CommandParser",
-  .stack_size = 256 * 4,
-  .priority = (osPriority_t) osPriorityLow,
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for commQueue */
 osMessageQueueId_t commQueueHandle;

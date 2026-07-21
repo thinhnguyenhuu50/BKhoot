@@ -51,9 +51,7 @@ void StartTask_CommandParser(void *argument)
     static uint16_t old_pos = 0;
     char local_buf[RX_BUFFER_SIZE + 1];
     
-    // Buffer for vTaskList output. It needs ~40 bytes per task.
-    char taskListBuf[400];
-    
+
     for(;;)
     {
         // Wait forever until a message arrives in the queue
@@ -77,37 +75,71 @@ void StartTask_CommandParser(void *argument)
             
             // Parse command
             char* cmd = strtok(local_buf, "\n");
-            if (cmd != NULL) 
+            if (cmd != NULL && cmd[0] != '\0') 
             {
-                if (strcmp(cmd, "h") == 0) 
+                switch (cmd[0]) 
                 {
-                    debug_log("--- Options Menu ---\r\n");
-                    debug_log("1. Show RTOS Statistics\r\n");
-                    debug_log("--------------------\r\n");
-                } 
-                else if (strcmp(cmd, "1") == 0) 
-                {
-                    debug_log("--- RTOS Statistics ---\r\n");
+                    case 'h':
+                        debug_log("--- Options Menu ---\r\n");
+                        debug_log("1. Show RTOS Statistics\r\n");
+                        debug_log("--------------------\r\n");
+                        break;
                     
-                    // Task Stack Usage
-                    UBaseType_t highWaterMark = uxTaskGetStackHighWaterMark(NULL);
-                    debug_log("Parser Task Stack HWM: %lu words\r\n", (uint32_t)highWaterMark);
+                    case '1':
+                        debug_log("--- RTOS Statistics ---\r\n");
+                        
+                        // Heap Usage
+                        size_t freeHeap = xPortGetFreeHeapSize();
+                        size_t minFreeHeap = xPortGetMinimumEverFreeHeapSize();
+                        debug_log("Free Heap: %u bytes (%u%% free)\r\n", (uint32_t)freeHeap, (uint32_t)((freeHeap * 100) / 524288));
+                        debug_log("Min Free Heap Ever: %u bytes (%u%% free)\r\n", (uint32_t)minFreeHeap, (uint32_t)((minFreeHeap * 100) / 524288));
+                        
+                        // Task List
+                        debug_log("\r\n%-20s | %-14s | %-14s | %-14s | %-14s\r\n", "Task Name", "State", "Priority", "Remain Stack", "Num");
+                        debug_log("---------------------|----------------|----------------|----------------|----------------\r\n");
+                        
+                        UBaseType_t uxArraySize = uxTaskGetNumberOfTasks();
+                        TaskStatus_t *pxTaskStatusArray = pvPortMalloc(uxArraySize * sizeof(TaskStatus_t));
+                        
+                        if (pxTaskStatusArray != NULL)
+                        {
+                            uint32_t ulTotalRunTime;
+                            uxArraySize = uxTaskGetSystemState(pxTaskStatusArray, uxArraySize, &ulTotalRunTime);
+                            
+                            for (UBaseType_t i = 0; i < uxArraySize; i++)
+                            {
+                                char cStatus;
+                                switch (pxTaskStatusArray[i].eCurrentState)
+                                {
+                                    case eRunning:   cStatus = 'X'; break;
+                                    case eReady:     cStatus = 'R'; break;
+                                    case eBlocked:   cStatus = 'B'; break;
+                                    case eSuspended: cStatus = 'S'; break;
+                                    case eDeleted:   cStatus = 'D'; break;
+                                    default:         cStatus = '?'; break;
+                                }
+                                
+                                debug_log("%-20s | %-14c | %-14u | %-14u | %-14u\r\n",
+                                          pxTaskStatusArray[i].pcTaskName,
+                                          cStatus,
+                                          (uint32_t)pxTaskStatusArray[i].uxCurrentPriority,
+                                          (uint32_t)pxTaskStatusArray[i].usStackHighWaterMark,
+                                          (uint32_t)pxTaskStatusArray[i].xTaskNumber);
+                            }
+                            
+                            vPortFree(pxTaskStatusArray);
+                        }
+                        else
+                        {
+                            debug_log("Failed to allocate memory for task status.\r\n");
+                        }
+                        
+                        debug_log("-----------------------\r\n");
+                        break;
                     
-                    // Heap Usage
-                    size_t freeHeap = xPortGetFreeHeapSize();
-                    size_t minFreeHeap = xPortGetMinimumEverFreeHeapSize();
-                    debug_log("Free Heap: %u bytes\r\n", (uint32_t)freeHeap);
-                    debug_log("Min Free Heap Ever: %u bytes\r\n", (uint32_t)minFreeHeap);
-                    
-                    // Task List
-                    debug_log("\r\nTask List (Name, State, Prio, Stack, Num):\r\n");
-                    vTaskList(taskListBuf);
-                    debug_log("%s\r\n", taskListBuf);
-                    debug_log("-----------------------\r\n");
-                } 
-                else 
-                {
-                    debug_log("Unknown command. Send 'h' for help.\r\n");
+                    default:
+                        debug_log("Unknown command. Send 'h' for help.\r\n");
+                        break;
                 }
             }
         }
