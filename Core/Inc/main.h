@@ -61,6 +61,14 @@ void Error_Handler(void);
 #define LED_DEBUG_GPIO_Port GPIOE
 #define FSMC_RES_Pin GPIO_PIN_13
 #define FSMC_RES_GPIO_Port GPIOC
+#define ESP_BUSY_Pin GPIO_PIN_9
+#define ESP_BUSY_GPIO_Port GPIOF
+#define ESP_POWER_Pin GPIO_PIN_10
+#define ESP_POWER_GPIO_Port GPIOF
+#define ESP_RX_Pin GPIO_PIN_2
+#define ESP_RX_GPIO_Port GPIOA
+#define ESP_TX_Pin GPIO_PIN_3
+#define ESP_TX_GPIO_Port GPIOA
 #define T_CS_Pin GPIO_PIN_7
 #define T_CS_GPIO_Port GPIOG
 #define T_CLK_Pin GPIO_PIN_8

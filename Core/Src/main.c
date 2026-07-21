@@ -103,6 +103,7 @@ int main(void)
   MX_I2C1_Init();
   MX_TIM1_Init();
   MX_USART1_UART_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   vPortDefineHeapRegions(xHeapRegions);
   HAL_DMA_RegisterCallback(&hdma_memtomem_dma2_stream0, HAL_DMA_XFER_CPLT_CB_ID, HAL_DMA_TxCpltCallback);
