@@ -59,7 +59,16 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     ${CMAKE_SOURCE_DIR}/App/gui_app.c
-    ${CMAKE_SOURCE_DIR}/App/game_logic.c
+    ${CMAKE_SOURCE_DIR}/App/Logic/game_logic.c
+    ${CMAKE_SOURCE_DIR}/App/screens/common/ui_styles.c
+    ${CMAKE_SOURCE_DIR}/App/screens/role_selection/scr_role_selection.c
+    ${CMAKE_SOURCE_DIR}/App/screens/master_lobby/scr_master_lobby.c
+    ${CMAKE_SOURCE_DIR}/App/screens/master_question/scr_master_question.c
+    ${CMAKE_SOURCE_DIR}/App/screens/master_leaderboard/scr_master_leaderboard.c
+    ${CMAKE_SOURCE_DIR}/App/screens/slave_scan/scr_slave_scan.c
+    ${CMAKE_SOURCE_DIR}/App/screens/slave_waiting/scr_slave_waiting.c
+    ${CMAKE_SOURCE_DIR}/App/screens/slave_answer/scr_slave_answer.c
+    ${CMAKE_SOURCE_DIR}/App/screens/slave_feedback/scr_slave_feedback.c
     ${CMAKE_SOURCE_DIR}/Drivers/LCD/lcd.c
     ${CMAKE_SOURCE_DIR}/Drivers/Touch/touch.c
     ${CMAKE_SOURCE_DIR}/Drivers/EEPROM/at24c.c
@@ -70,6 +79,16 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
     ${CMAKE_SOURCE_DIR}/App
+    ${CMAKE_SOURCE_DIR}/App/Logic
+    ${CMAKE_SOURCE_DIR}/App/screens/common
+    ${CMAKE_SOURCE_DIR}/App/screens/role_selection
+    ${CMAKE_SOURCE_DIR}/App/screens/master_lobby
+    ${CMAKE_SOURCE_DIR}/App/screens/master_question
+    ${CMAKE_SOURCE_DIR}/App/screens/master_leaderboard
+    ${CMAKE_SOURCE_DIR}/App/screens/slave_scan
+    ${CMAKE_SOURCE_DIR}/App/screens/slave_waiting
+    ${CMAKE_SOURCE_DIR}/App/screens/slave_answer
+    ${CMAKE_SOURCE_DIR}/App/screens/slave_feedback
     ${CMAKE_SOURCE_DIR}/Drivers/LCD
     ${CMAKE_SOURCE_DIR}/Drivers/Touch
     ${CMAKE_SOURCE_DIR}/Drivers/EEPROM

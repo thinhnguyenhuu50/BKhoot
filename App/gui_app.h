@@ -4,30 +4,17 @@
 #include "lvgl.h"
 #include <stdbool.h>
 
+// Include all screen headers so other files can just include gui_app.h if they want
+#include "scr_role_selection.h"
+#include "scr_master_lobby.h"
+#include "scr_master_question.h"
+#include "scr_master_leaderboard.h"
+#include "scr_slave_scan.h"
+#include "scr_slave_waiting.h"
+#include "scr_slave_answer.h"
+#include "scr_slave_feedback.h"
+
 // Initialize the GUI and load the initial role selection screen
 void gui_app_init(void);
-
-// --- Initial Screens ---
-void gui_load_role_selection_screen(void);
-
-// --- Master Screens ---
-void gui_load_master_lobby_screen(void);
-void gui_update_master_lobby_count(int count);
-
-void gui_load_master_question_screen(const char* question);
-void gui_update_master_timer(int percent);
-
-void gui_load_master_leaderboard_screen(void);
-
-// --- Slave Screens ---
-void gui_load_slave_scan_screen(void);
-void gui_slave_add_host_to_list(const char* host_name, int host_id);
-void gui_slave_clear_host_list(void);
-
-void gui_load_slave_waiting_screen(void);
-
-void gui_load_slave_answer_screen(void);
-
-void gui_load_slave_feedback_screen(bool correct, int current_score);
 
 #endif // GUI_APP_H
