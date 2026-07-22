@@ -57,7 +57,7 @@ const osThreadAttr_t ledBlinkingTask_attributes = {
 };
 /* Definitions for GUI_Task */
 osThreadId_t GUI_TaskHandle;
-uint32_t GUI_TaskBuffer[ 4096 ];
+uint32_t GUI_TaskBuffer[ 2048 ];
 osStaticThreadDef_t GUI_TaskControlBlock;
 const osThreadAttr_t GUI_Task_attributes = {
   .name = "GUI_Task",
