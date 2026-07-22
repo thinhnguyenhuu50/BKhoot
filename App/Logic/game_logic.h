@@ -1,6 +1,8 @@
 #ifndef GAME_LOGIC_H
 #define GAME_LOGIC_H
 
+#include <stdint.h>
+
 typedef enum {
     GAME_ROLE_NONE,
     GAME_ROLE_MASTER,
@@ -41,5 +43,8 @@ void game_slave_join_host(int host_id);
 
 // Slave submits an answer (0: Red, 1: Blue, 2: Yellow, 3: Green)
 void game_slave_submit_answer(int answer_idx);
+
+// Send a command to the ESP8266 via UART2
+void comm_send_cmd(uint8_t cmd, uint8_t *payload, uint8_t len);
 
 #endif // GAME_LOGIC_H

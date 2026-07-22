@@ -60,6 +60,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     ${CMAKE_SOURCE_DIR}/App/gui_app.c
     ${CMAKE_SOURCE_DIR}/App/Logic/game_logic.c
+    ${CMAKE_SOURCE_DIR}/App/Logic/protocol.c
     ${CMAKE_SOURCE_DIR}/App/screens/common/ui_styles.c
     ${CMAKE_SOURCE_DIR}/App/screens/role_selection/scr_role_selection.c
     ${CMAKE_SOURCE_DIR}/App/screens/master_lobby/scr_master_lobby.c

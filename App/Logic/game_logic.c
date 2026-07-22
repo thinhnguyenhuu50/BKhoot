@@ -3,8 +3,13 @@
 #include "cmsis_os.h" // For FreeRTOS functions like osDelay
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include "protocol.h"
+#include "usart.h"
+#include "rs232.h"
 
 // Game state variables
+extern osMessageQueueId_t commQueueHandle;
 static GameRole_t current_role = GAME_ROLE_NONE;
 static GameState_t current_state = GAME_STATE_INIT;
 
@@ -35,11 +40,30 @@ GameRole_t game_get_role(void) {
 }
 
 // Master Callbacks
+// Helper to send command to ESP8266
+void comm_send_cmd(uint8_t cmd, uint8_t *payload, uint8_t len) {
+    protocol_msg_t msg;
+    msg.cmd = cmd;
+    msg.len = len;
+    if (len > 0 && payload != NULL) {
+        memcpy(msg.payload, payload, len);
+    }
+    
+    uint8_t tx_buf[MAX_PAYLOAD + 4];
+    int frame_len = protocol_build_frame(tx_buf, &msg);
+    HAL_UART_Transmit(&huart2, tx_buf, frame_len, 100);
+}
+
+// Master Callbacks
 void game_master_start_quiz(void) {
     if(current_role == GAME_ROLE_MASTER && current_state == GAME_STATE_LOBBY) {
         current_state = GAME_STATE_QUESTION;
-        // In a real app, send ESP-NOW broadcast to start quiz
-        gui_load_master_question_screen("What is the capital of France?");
+        comm_send_cmd(CMD_START_QUIZ, NULL, 0);
+        
+        const char *q = "What is the capital of France?";
+        comm_send_cmd(CMD_BROADCAST_QUESTION, (uint8_t*)q, strlen(q) + 1);
+        
+        gui_load_master_question_screen(q);
         current_question_timer = 100; // 100%
         gui_update_master_timer(current_question_timer);
     }
@@ -48,23 +72,26 @@ void game_master_start_quiz(void) {
 void game_master_next_question(void) {
     if(current_role == GAME_ROLE_MASTER) {
         current_state = GAME_STATE_QUESTION;
-        gui_load_master_question_screen("Next question...");
+        const char *q = "Next question...";
+        comm_send_cmd(CMD_BROADCAST_QUESTION, (uint8_t*)q, strlen(q) + 1);
+        gui_load_master_question_screen(q);
     }
 }
 
 // Slave Callbacks
 void game_slave_scan_hosts(void) {
     if(current_role == GAME_ROLE_SLAVE) {
-        // Mocking finding hosts
-        gui_slave_add_host_to_list("Host_1 (Physics)", 1);
-        gui_slave_add_host_to_list("Host_2 (Math)", 2);
+        comm_send_cmd(CMD_SCAN_HOSTS, NULL, 0);
     }
 }
 
 void game_slave_join_host(int host_id) {
     if(current_role == GAME_ROLE_SLAVE) {
         current_state = GAME_STATE_LOBBY;
-        // Send join request via ESP-NOW
+        // host_id is just a mock ID, for now we will just use a fake MAC for the parameter
+        // In reality we should map host_id back to MAC.
+        uint8_t fake_mac[6] = {0x00, 0x00, 0x00, 0x00, 0x00, host_id};
+        comm_send_cmd(CMD_JOIN_HOST, fake_mac, 6);
         gui_load_slave_waiting_screen();
     }
 }
@@ -72,11 +99,9 @@ void game_slave_join_host(int host_id) {
 void game_slave_submit_answer(int answer_idx) {
     if(current_role == GAME_ROLE_SLAVE && current_state == GAME_STATE_QUESTION) {
         current_state = GAME_STATE_FEEDBACK;
-        // Send answer to master via ESP-NOW
-        // For now, mock feedback directly
-        bool correct = (answer_idx == 1); // Mock correct answer
-        if(correct) current_score += 100;
-        gui_load_slave_feedback_screen(correct, current_score);
+        uint8_t ans = (uint8_t)answer_idx;
+        comm_send_cmd(CMD_SUBMIT_ANSWER, &ans, 1);
+        // We will wait for FEEDBACK_RECEIVED to show feedback screen
     }
 }
 
@@ -98,20 +123,82 @@ void game_task_func(void *argument) {
                     gui_load_master_leaderboard_screen();
                 }
             }
-        } else if(current_role == GAME_ROLE_SLAVE) {
-            // Check for incoming questions from Master via ESP-NOW
-            // If question received:
-            // current_state = GAME_STATE_QUESTION;
-            // gui_load_slave_answer_screen();
+        }
+        // Process incoming ESP-NOW messages from commQueue
+        protocol_msg_t *rx_msg;
+        if (osMessageQueueGet(commQueueHandle, &rx_msg, NULL, 0) == osOK) {
+            if (current_role == GAME_ROLE_SLAVE) {
+                if (rx_msg->cmd == CMD_HOST_FOUND) {
+                    char name[32] = {0};
+                    if (rx_msg->len > 6) {
+                        int name_len = rx_msg->len - 6;
+                        if (name_len > 31) name_len = 31;
+                        memcpy(name, &rx_msg->payload[6], name_len);
+                    } else {
+                        strcpy(name, "Unknown Host");
+                    }
+                    // Use last byte of MAC as host_id for now
+                    gui_slave_add_host_to_list(name, rx_msg->payload[5]);
+                } else if (rx_msg->cmd == CMD_QUESTION_RECEIVED) {
+                    current_state = GAME_STATE_QUESTION;
+                    gui_load_slave_answer_screen();
+                } else if (rx_msg->cmd == CMD_FEEDBACK_RECEIVED) {
+                    bool correct = rx_msg->payload[0];
+                    current_score = (rx_msg->payload[1] << 8) | rx_msg->payload[2];
+                    gui_load_slave_feedback_screen(correct, current_score);
+                }
+            } else if (current_role == GAME_ROLE_MASTER) {
+                if (rx_msg->cmd == CMD_PLAYER_JOINED) {
+                    connected_players++;
+                    gui_update_master_lobby_count(connected_players);
+                } else if (rx_msg->cmd == CMD_ANSWER_RECEIVED) {
+                    // Logic to handle answers
+                    uint8_t ans = rx_msg->payload[6];
+                    bool correct = (ans == 1); // Mock validation
+                    
+                    uint8_t feedback[3];
+                    feedback[0] = correct;
+                    feedback[1] = 0; // Mock score high byte
+                    feedback[2] = correct ? 100 : 0; // Mock score low byte
+                    
+                    uint8_t fb_payload[9];
+                    memcpy(fb_payload, rx_msg->payload, 6); // MAC
+                    memcpy(&fb_payload[6], feedback, 3);
+                    
+                    comm_send_cmd(CMD_SEND_FEEDBACK, fb_payload, 9);
+                }
+            }
+            vPortFree(rx_msg); // Important: Free the message after processing!
         }
 
         osDelay(100); // Run every 100ms
     }
 }
 
+static protocol_parser_t parser;
+static uint8_t uart2_rx_buf[1];
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance == USART2) {
+        protocol_msg_t *msg = (protocol_msg_t*)pvPortMalloc(sizeof(protocol_msg_t));
+        if (msg != NULL) {
+            if (protocol_parse_byte(&parser, uart2_rx_buf[0], msg)) {
+                if (osMessageQueuePut(commQueueHandle, &msg, 0, 0) != osOK) {
+                    vPortFree(msg); // Queue full, drop it
+                }
+            } else {
+                vPortFree(msg); // Not complete yet
+            }
+        }
+        HAL_UART_Receive_IT(&huart2, uart2_rx_buf, 1);
+    }
+}
+
 void StartTask_COMM(void *argument) {
+    protocol_parser_init(&parser);
+    HAL_UART_Receive_IT(&huart2, uart2_rx_buf, 1);
     for(;;) {
-        osDelay(100);
+        osDelay(1000);
     }
 }
 
