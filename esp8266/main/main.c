@@ -1,33 +1,35 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/gpio.h"
+#include "driver/pwm.h"
 
 #define BLINK_GPIO 2
 
 void blink_task(void *pvParameter)
 {
-    gpio_config_t io_conf;
-    //disable interrupt
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    //set as output mode
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    //bit mask of the pins that you want to set
-    io_conf.pin_bit_mask = (1ULL << BLINK_GPIO);
-    //disable pull-down mode
-    io_conf.pull_down_en = 0;
-    //disable pull-up mode
-    io_conf.pull_up_en = 0;
-    //configure GPIO with the given settings
-    gpio_config(&io_conf);
-
+    // Initialize PWM on GPIO2
+    const uint32_t pin_num[1] = {BLINK_GPIO};
+    uint32_t duties[1] = {0}; // Start with 0 duty
+    
+    // PWM period 1000us (1kHz)
+    pwm_init(1000, duties, 1, pin_num);
+    
     int blink_state = 0;
-    while(1) {
-        /* Blink off (output low) */
-        printf("Turning the LED %s!\n", blink_state ? "ON" : "OFF");
-        gpio_set_level(BLINK_GPIO, blink_state);
+    while(1) {        
+        if (blink_state) {
+            // Low brightness: ESP8266 GPIO2 LED is usually active-low.
+            // Duty = 950 means HIGH for 95% of the time, and LOW (ON) for 5%.
+            // If your LED is active-high, change this to 50 instead of 950.
+            pwm_set_duty(0, 950); 
+        } else {
+            // OFF: 1000 means HIGH (OFF for active-low) 100% of the time.
+            // If your LED is active-high, change this to 0 instead of 1000.
+            pwm_set_duty(0, 1000);
+        }
+        pwm_start();
+        
         blink_state = !blink_state;
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
 }
 
