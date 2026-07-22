@@ -51,6 +51,7 @@ void comm_send_cmd(uint8_t cmd, uint8_t *payload, uint8_t len) {
     
     uint8_t tx_buf[MAX_PAYLOAD + 4];
     int frame_len = protocol_build_frame(tx_buf, &msg);
+    debug_log("TX ESP CMD:%02X, LEN:%d\r\n", cmd, len);
     HAL_UART_Transmit(&huart2, tx_buf, frame_len, 100);
 }
 
@@ -127,6 +128,7 @@ void game_task_func(void *argument) {
         // Process incoming ESP-NOW messages from commQueue
         protocol_msg_t *rx_msg;
         if (osMessageQueueGet(commQueueHandle, &rx_msg, NULL, 0) == osOK) {
+            debug_log("RX ESP CMD:%02X, LEN:%d\r\n", rx_msg->cmd, rx_msg->len);
             if (current_role == GAME_ROLE_SLAVE) {
                 if (rx_msg->cmd == CMD_HOST_FOUND) {
                     char name[32] = {0};
@@ -168,7 +170,7 @@ void game_task_func(void *argument) {
                     comm_send_cmd(CMD_SEND_FEEDBACK, fb_payload, 9);
                 }
             }
-            vPortFree(rx_msg); // Important: Free the message after processing!
+            // No vPortFree here since we use a static pool
         }
 
         osDelay(100); // Run every 100ms
@@ -178,16 +180,16 @@ void game_task_func(void *argument) {
 static protocol_parser_t parser;
 static uint8_t uart2_rx_buf[1];
 
+#define MSG_POOL_SIZE 4
+static protocol_msg_t msg_pool[MSG_POOL_SIZE];
+static uint8_t pool_idx = 0;
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     if (huart->Instance == USART2) {
-        protocol_msg_t *msg = (protocol_msg_t*)pvPortMalloc(sizeof(protocol_msg_t));
-        if (msg != NULL) {
-            if (protocol_parse_byte(&parser, uart2_rx_buf[0], msg)) {
-                if (osMessageQueuePut(commQueueHandle, &msg, 0, 0) != osOK) {
-                    vPortFree(msg); // Queue full, drop it
-                }
-            } else {
-                vPortFree(msg); // Not complete yet
+        if (protocol_parse_byte(&parser, uart2_rx_buf[0], &msg_pool[pool_idx])) {
+            protocol_msg_t *msg_ptr = &msg_pool[pool_idx];
+            if (osMessageQueuePut(commQueueHandle, &msg_ptr, 0, 0) == osOK) {
+                pool_idx = (pool_idx + 1) % MSG_POOL_SIZE;
             }
         }
         HAL_UART_Receive_IT(&huart2, uart2_rx_buf, 1);
