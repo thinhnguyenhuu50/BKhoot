@@ -129,6 +129,11 @@ void game_task_func(void *argument) {
         protocol_msg_t *rx_msg;
         if (osMessageQueueGet(commQueueHandle, &rx_msg, NULL, 0) == osOK) {
             debug_log("RX ESP CMD:%02X, LEN:%d\r\n", rx_msg->cmd, rx_msg->len);
+            
+            if (rx_msg->cmd == CMD_ESP_READY) {
+                debug_log(">>> ESP8266 IS READY! <<<\r\n");
+            }
+
             if (current_role == GAME_ROLE_SLAVE) {
                 if (rx_msg->cmd == CMD_HOST_FOUND) {
                     char name[32] = {0};
