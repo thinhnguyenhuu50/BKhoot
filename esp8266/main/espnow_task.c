@@ -29,7 +29,7 @@ static void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int len
     // Let's create specific protocol frames for STM32
     protocol_msg_t out_msg;
     
-    if (msg.cmd == CMD_HOST_FOUND || msg.cmd == CMD_PLAYER_JOINED || msg.cmd == CMD_ANSWER_RECEIVED) {
+    if (msg.cmd == CMD_HOST_FOUND || msg.cmd == CMD_JOIN_HOST || msg.cmd == CMD_SUBMIT_ANSWER) {
         out_msg.cmd = msg.cmd;
         out_msg.len = 6 + msg.len;
         memcpy(out_msg.payload, mac_addr, 6);
