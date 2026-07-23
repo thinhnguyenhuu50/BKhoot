@@ -23,6 +23,7 @@
 #define CMD_PLAYER_JOINED      0x0D
 #define CMD_START_QUIZ         0x0E
 #define CMD_ESP_READY          0x0F
+#define CMD_ESP_LOG            0x10
 
 typedef struct {
     uint8_t cmd;

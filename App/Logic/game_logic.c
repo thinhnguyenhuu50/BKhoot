@@ -132,6 +132,14 @@ void game_task_func(void *argument) {
             
             if (rx_msg->cmd == CMD_ESP_READY) {
                 debug_log(">>> ESP8266 IS READY! <<<\r\n");
+            } else if (rx_msg->cmd == CMD_ESP_LOG) {
+                // Ensure null termination safely, though it should be a string
+                char log_buf[MAX_PAYLOAD + 1];
+                int len = rx_msg->len;
+                if(len > MAX_PAYLOAD) len = MAX_PAYLOAD;
+                memcpy(log_buf, rx_msg->payload, len);
+                log_buf[len] = '\0';
+                debug_log("[ESP8266] %s\r\n", log_buf);
             }
 
             if (current_role == GAME_ROLE_SLAVE) {
