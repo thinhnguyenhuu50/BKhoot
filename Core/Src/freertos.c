@@ -57,7 +57,7 @@ const osThreadAttr_t ledBlinkingTask_attributes = {
 };
 /* Definitions for GUI_Task */
 osThreadId_t GUI_TaskHandle;
-uint32_t GUI_TaskBuffer[ 4096 ];
+uint32_t GUI_TaskBuffer[ 2048 ];
 osStaticThreadDef_t GUI_TaskControlBlock;
 const osThreadAttr_t GUI_Task_attributes = {
   .name = "GUI_Task",
@@ -145,7 +145,7 @@ void MX_FREERTOS_Init(void) {
 
   /* Create the queue(s) */
   /* creation of commQueue */
-  commQueueHandle = osMessageQueueNew (4, sizeof(uint16_t), &commQueue_attributes);
+  commQueueHandle = osMessageQueueNew (4, sizeof(uint32_t), &commQueue_attributes);
 
   /* creation of uartRxQueue */
   uartRxQueueHandle = osMessageQueueNew (3, sizeof(uint16_t), &uartRxQueue_attributes);
