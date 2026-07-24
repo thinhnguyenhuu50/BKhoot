@@ -41,7 +41,7 @@ void gui_load_slave_scan_screen(void) {
     lv_obj_set_size(list_hosts, LV_PCT(90), LV_PCT(60));
     lv_obj_align(list_hosts, LV_ALIGN_CENTER, 0, 20);
 
-    lv_scr_load(scr_slave_scan);
+    lv_scr_load_anim(scr_slave_scan, LV_SCR_LOAD_ANIM_FADE_ON, 300, 0, true);
 }
 
 void gui_slave_add_host_to_list(const char* host_name, int host_id) {

@@ -41,7 +41,7 @@ void gui_load_master_lobby_screen(void) {
     lv_obj_center(lbl_start);
     lv_obj_add_event_cb(btn_start, master_start_quiz_cb, LV_EVENT_CLICKED, NULL);
 
-    lv_scr_load(scr_master_lobby);
+    lv_scr_load_anim(scr_master_lobby, LV_SCR_LOAD_ANIM_FADE_ON, 300, 0, true);
 }
 
 void gui_update_master_lobby_count(int count) {

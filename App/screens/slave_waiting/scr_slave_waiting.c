@@ -19,5 +19,5 @@ void gui_load_slave_waiting_screen(void) {
 
     create_home_btn(scr_slave_waiting, LV_ALIGN_TOP_LEFT, 10, 10);
 
-    lv_scr_load(scr_slave_waiting);
+    lv_scr_load_anim(scr_slave_waiting, LV_SCR_LOAD_ANIM_FADE_ON, 300, 0, true);
 }

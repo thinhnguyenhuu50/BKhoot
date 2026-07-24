@@ -87,7 +87,7 @@ void gui_load_master_question_screen(const char* question, uint32_t duration_ms)
     lv_anim_set_ready_cb(&a, timer_ready_cb);
     lv_anim_start(&a);
 
-    lv_scr_load(scr_master_question);
+    lv_scr_load_anim(scr_master_question, LV_SCR_LOAD_ANIM_FADE_ON, 300, 0, true);
 }
 
 void gui_update_master_timer(int percent) {

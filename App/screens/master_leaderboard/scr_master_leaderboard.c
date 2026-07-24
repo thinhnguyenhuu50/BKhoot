@@ -26,5 +26,5 @@ void gui_load_master_leaderboard_screen(void) {
     // In a real app, you'd trigger next question
     // lv_obj_add_event_cb(btn_next, master_next_cb, LV_EVENT_CLICKED, NULL);
 
-    lv_scr_load(scr_master_leaderboard);
+    lv_scr_load_anim(scr_master_leaderboard, LV_SCR_LOAD_ANIM_FADE_ON, 300, 0, true);
 }

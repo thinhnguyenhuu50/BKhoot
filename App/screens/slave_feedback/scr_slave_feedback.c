@@ -30,5 +30,5 @@ void gui_load_slave_feedback_screen(bool correct, int current_score) {
 
     create_home_btn(scr_slave_feedback, LV_ALIGN_TOP_LEFT, 10, 10);
 
-    lv_scr_load(scr_slave_feedback);
+    lv_scr_load_anim(scr_slave_feedback, LV_SCR_LOAD_ANIM_FADE_ON, 300, 0, true);
 }

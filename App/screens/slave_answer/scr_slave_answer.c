@@ -87,5 +87,5 @@ void gui_load_slave_answer_screen(const char* question, uint32_t duration_ms) {
     lv_anim_set_values(&a, 100, 0);
     lv_anim_start(&a);
 
-    lv_scr_load(scr_slave_answer);
+    lv_scr_load_anim(scr_slave_answer, LV_SCR_LOAD_ANIM_FADE_ON, 300, 0, true);
 }
