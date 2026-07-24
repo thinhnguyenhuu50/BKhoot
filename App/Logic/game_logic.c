@@ -32,12 +32,17 @@ void game_init(void) {
 
 void game_set_role(GameRole_t role) {
     current_role = role;
-    if(role == GAME_ROLE_MASTER) {
-        current_state = GAME_STATE_LOBBY;
-        connected_players = 0;
-    } else if(role == GAME_ROLE_SLAVE) {
-        current_state = GAME_STATE_INIT; // Scanning state
-        discovered_hosts_count = 0;
+    switch (role) {
+        case GAME_ROLE_MASTER:
+            current_state = GAME_STATE_LOBBY;
+            connected_players = 0;
+            break;
+        case GAME_ROLE_SLAVE:
+            current_state = GAME_STATE_INIT; // Scanning state
+            discovered_hosts_count = 0;
+            break;
+        default:
+            break;
     }
 }
 
@@ -116,91 +121,128 @@ void game_slave_submit_answer(int answer_idx) {
 void game_task_func(void *argument) {
     while(1) {
         // Handle state machine logic that requires periodic update
-        if(current_role == GAME_ROLE_MASTER) {
-            if(current_state == GAME_STATE_LOBBY) {
-                // Mock player joining
-                // gui_update_master_lobby_count(connected_players);
-            } else if(current_state == GAME_STATE_QUESTION) {
-                // Update timer
-                if(current_question_timer > 0) {
-                    current_question_timer -= 2; // Decrease 2% every tick
-                    gui_update_master_timer(current_question_timer);
-                } else {
-                    current_state = GAME_STATE_RESULTS;
-                    gui_load_master_leaderboard_screen();
+        switch (current_role) {
+            case GAME_ROLE_MASTER:
+                switch (current_state) {
+                    case GAME_STATE_LOBBY:
+                        // Mock player joining
+                        // gui_update_master_lobby_count(connected_players);
+                        break;
+                    case GAME_STATE_QUESTION:
+                        // Update timer
+                        if(current_question_timer > 0) {
+                            current_question_timer -= 2; // Decrease 2% every tick
+                            gui_update_master_timer(current_question_timer);
+                        } else {
+                            current_state = GAME_STATE_RESULTS;
+                            gui_load_master_leaderboard_screen();
+                        }
+                        break;
+                    default:
+                        break;
                 }
-            }
+                break;
+            default:
+                break;
         }
         // Process incoming ESP-NOW messages from commQueue
         protocol_msg_t *rx_msg;
         if (osMessageQueueGet(commQueueHandle, &rx_msg, NULL, 0) == osOK) {
             debug_log("RX ESP CMD:%02X, LEN:%d\r\n", rx_msg->cmd, rx_msg->len);
             
-            if (rx_msg->cmd == CMD_ESP_READY) {
-                debug_log(">>> ESP8266 IS READY! <<<\r\n");
-            } else if (rx_msg->cmd == CMD_ESP_LOG) {
-                // Ensure null termination safely, though it should be a string
-                char log_buf[MAX_PAYLOAD + 1];
-                int len = rx_msg->len;
-                if(len > MAX_PAYLOAD) len = MAX_PAYLOAD;
-                memcpy(log_buf, rx_msg->payload, len);
-                log_buf[len] = '\0';
-                debug_log("[ESP8266] %s\r\n", log_buf);
+            switch (rx_msg->cmd) {
+                case CMD_ESP_READY:
+                    debug_log(">>> ESP8266 IS READY! <<<\r\n");
+                    break;
+                case CMD_ESP_LOG: {
+                    // Ensure null termination safely, though it should be a string
+                    char log_buf[MAX_PAYLOAD + 1];
+                    int len = rx_msg->len;
+                    if(len > MAX_PAYLOAD) len = MAX_PAYLOAD;
+                    memcpy(log_buf, rx_msg->payload, len);
+                    log_buf[len] = '\0';
+                    debug_log("[ESP8266] %s\r\n", log_buf);
+                    break;
+                }
+                default:
+                    break;
             }
 
-            if (current_role == GAME_ROLE_SLAVE) {
-                if (rx_msg->cmd == CMD_HOST_FOUND) {
-                    char name[32] = {0};
-                    if (rx_msg->len > 6) {
-                        int name_len = rx_msg->len - 6;
-                        if (name_len > 31) name_len = 31;
-                        memcpy(name, &rx_msg->payload[6], name_len);
-                    } else {
-                        strcpy(name, "Unknown Host");
+            switch (current_role) {
+                case GAME_ROLE_SLAVE:
+                    switch (rx_msg->cmd) {
+                        case CMD_HOST_FOUND: {
+                            char name[32] = {0};
+                            if (rx_msg->len > 6) {
+                                int name_len = rx_msg->len - 6;
+                                if (name_len > 31) name_len = 31;
+                                memcpy(name, &rx_msg->payload[6], name_len);
+                            } else {
+                                strcpy(name, "Unknown Host");
+                            }
+                            if (discovered_hosts_count < MAX_HOSTS) {
+                                memcpy(discovered_hosts[discovered_hosts_count], rx_msg->payload, 6);
+                                gui_slave_add_host_to_list(name, discovered_hosts_count);
+                                discovered_hosts_count++;
+                            }
+                            break;
+                        }
+                        case CMD_START_QUIZ:
+                            // Quiz started!
+                            break;
+                        case CMD_BROADCAST_QUESTION:
+                            current_state = GAME_STATE_QUESTION;
+                            gui_load_slave_answer_screen();
+                            break;
+                        case CMD_SEND_FEEDBACK: {
+                            bool correct = rx_msg->payload[0];
+                            current_score = (rx_msg->payload[1] << 8) | rx_msg->payload[2];
+                            gui_load_slave_feedback_screen(correct, current_score);
+                            break;
+                        }
+                        default:
+                            break;
                     }
-                    if (discovered_hosts_count < MAX_HOSTS) {
-                        memcpy(discovered_hosts[discovered_hosts_count], rx_msg->payload, 6);
-                        gui_slave_add_host_to_list(name, discovered_hosts_count);
-                        discovered_hosts_count++;
+                    break;
+                case GAME_ROLE_MASTER:
+                    switch (rx_msg->cmd) {
+                        case CMD_SCAN_HOSTS: {
+                            // Send CMD_HOST_FOUND with lobby name
+                            const char *lobby_name = "BKhoot Lobby";
+                            comm_send_cmd(CMD_HOST_FOUND, (uint8_t*)lobby_name, strlen(lobby_name) + 1);
+                            break;
+                        }
+                        case CMD_JOIN_HOST:
+                            if (connected_players < MAX_PLAYERS && rx_msg->len >= 6) {
+                                memcpy(player_macs[connected_players], rx_msg->payload, 6);
+                                connected_players++;
+                                gui_update_master_lobby_count(connected_players);
+                            }
+                            break;
+                        case CMD_SUBMIT_ANSWER: {
+                            if (rx_msg->len >= 7) {
+                                uint8_t ans = rx_msg->payload[6];
+                                bool correct = (ans == 1); // Mock validation
+                                
+                                uint8_t feedback[3];
+                                feedback[0] = correct;
+                                feedback[1] = 0; // Mock score high byte
+                                feedback[2] = correct ? 100 : 0; // Mock score low byte
+                                
+                                uint8_t fb_payload[9];
+                                memcpy(fb_payload, rx_msg->payload, 6); // Target MAC
+                                memcpy(&fb_payload[6], feedback, 3);
+                                
+                                comm_send_cmd(CMD_SEND_FEEDBACK, fb_payload, 9);
+                            }
+                            break;
+                        }
+                        default:
+                            break;
                     }
-                } else if (rx_msg->cmd == CMD_START_QUIZ) {
-                    // Quiz started!
-                } else if (rx_msg->cmd == CMD_BROADCAST_QUESTION) {
-                    current_state = GAME_STATE_QUESTION;
-                    gui_load_slave_answer_screen();
-                } else if (rx_msg->cmd == CMD_SEND_FEEDBACK) {
-                    bool correct = rx_msg->payload[0];
-                    current_score = (rx_msg->payload[1] << 8) | rx_msg->payload[2];
-                    gui_load_slave_feedback_screen(correct, current_score);
-                }
-            } else if (current_role == GAME_ROLE_MASTER) {
-                if (rx_msg->cmd == CMD_SCAN_HOSTS) {
-                    // Send CMD_HOST_FOUND with lobby name
-                    const char *lobby_name = "BKhoot Lobby";
-                    comm_send_cmd(CMD_HOST_FOUND, (uint8_t*)lobby_name, strlen(lobby_name) + 1);
-                } else if (rx_msg->cmd == CMD_JOIN_HOST) {
-                    if (connected_players < MAX_PLAYERS && rx_msg->len >= 6) {
-                        memcpy(player_macs[connected_players], rx_msg->payload, 6);
-                        connected_players++;
-                        gui_update_master_lobby_count(connected_players);
-                    }
-                } else if (rx_msg->cmd == CMD_SUBMIT_ANSWER) {
-                    if (rx_msg->len >= 7) {
-                        uint8_t ans = rx_msg->payload[6];
-                        bool correct = (ans == 1); // Mock validation
-                        
-                        uint8_t feedback[3];
-                        feedback[0] = correct;
-                        feedback[1] = 0; // Mock score high byte
-                        feedback[2] = correct ? 100 : 0; // Mock score low byte
-                        
-                        uint8_t fb_payload[9];
-                        memcpy(fb_payload, rx_msg->payload, 6); // Target MAC
-                        memcpy(&fb_payload[6], feedback, 3);
-                        
-                        comm_send_cmd(CMD_SEND_FEEDBACK, fb_payload, 9);
-                    }
-                }
+                    break;
+                default:
+                    break;
             }
             // No vPortFree here since we use a static pool
         }
