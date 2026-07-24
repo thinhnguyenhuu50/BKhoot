@@ -198,7 +198,9 @@ void game_task_func(void *argument) {
                             }
                             if (discovered_hosts_count < MAX_HOSTS) {
                                 memcpy(discovered_hosts[discovered_hosts_count], rx_msg->payload, 6);
+                                app_lv_lock();
                                 gui_slave_add_host_to_list(name, discovered_hosts_count);
+                                app_lv_unlock();
                                 discovered_hosts_count++;
                             }
                             break;
@@ -223,13 +225,17 @@ void game_task_func(void *argument) {
                             } else {
                                 strcpy(question, "Question?");
                             }
+                            app_lv_lock();
                             gui_load_slave_answer_screen(question, duration_ms);
+                            app_lv_unlock();
                             break;
                         }
                         case CMD_SEND_FEEDBACK: {
                             bool correct = rx_msg->payload[0];
                             current_score = (rx_msg->payload[1] << 8) | rx_msg->payload[2];
+                            app_lv_lock();
                             gui_load_slave_feedback_screen(correct, current_score);
+                            app_lv_unlock();
                             break;
                         }
                         default:
@@ -248,7 +254,9 @@ void game_task_func(void *argument) {
                             if (connected_players < MAX_PLAYERS && rx_msg->len >= 6) {
                                 memcpy(player_macs[connected_players], rx_msg->payload, 6);
                                 connected_players++;
+                                app_lv_lock();
                                 gui_update_master_lobby_count(connected_players);
+                                app_lv_unlock();
                             }
                             break;
                         case CMD_SUBMIT_ANSWER: {

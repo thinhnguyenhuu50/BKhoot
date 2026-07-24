@@ -98,6 +98,11 @@ osMessageQueueId_t uartRxQueueHandle;
 const osMessageQueueAttr_t uartRxQueue_attributes = {
   .name = "uartRxQueue"
 };
+/* Definitions for lvgl_mutex */
+osMutexId_t lvgl_mutexHandle;
+const osMutexAttr_t lvgl_mutex_attributes = {
+  .name = "lvgl_mutex"
+};
 /* Definitions for uart_tx_sem */
 osSemaphoreId_t uart_tx_semHandle;
 const osSemaphoreAttr_t uart_tx_sem_attributes = {
@@ -126,6 +131,9 @@ void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
 
   /* USER CODE END Init */
+  /* Create the mutex(es) */
+  /* creation of lvgl_mutex */
+  lvgl_mutexHandle = osMutexNew(&lvgl_mutex_attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */

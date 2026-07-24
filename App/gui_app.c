@@ -69,7 +69,9 @@ void StartTask_LVGL(void *argument) {
     gui_app_init();
     debug_log("GUI initialized\r\n");
     for(;;) {
+        app_lv_lock();
         lv_timer_handler();
+        app_lv_unlock();
         osDelay(5);
     }
 }

@@ -14,6 +14,22 @@
 #include "scr_slave_answer.h"
 #include "scr_slave_feedback.h"
 
+#include "cmsis_os.h"
+
+extern osMutexId_t lvgl_mutexHandle;
+
+static inline void app_lv_lock(void) {
+    if (lvgl_mutexHandle != NULL) {
+        osMutexAcquire(lvgl_mutexHandle, osWaitForever);
+    }
+}
+
+static inline void app_lv_unlock(void) {
+    if (lvgl_mutexHandle != NULL) {
+        osMutexRelease(lvgl_mutexHandle);
+    }
+}
+
 // Initialize the GUI and load the initial role selection screen
 void gui_app_init(void);
 
