@@ -1,12 +1,21 @@
 #include "scr_master_question.h"
 #include "ui_styles.h"
 #include "rs232.h"
+#include "game_logic.h"
 #include <stddef.h>
 #include <stdint.h>
 
 static lv_obj_t * scr_master_question;
 static lv_obj_t * label_question = NULL;
 static lv_obj_t * bar_timer = NULL;
+
+static void set_timer_val(void * bar, int32_t val) {
+    lv_bar_set_value((lv_obj_t *)bar, val, LV_ANIM_ON);
+}
+
+static void timer_ready_cb(lv_anim_t * a) {
+    game_master_timer_timeout();
+}
 
 static void master_answer_btn_cb(lv_event_t * e) {
     int answer_idx = (int)(intptr_t)lv_event_get_user_data(e);
@@ -17,9 +26,17 @@ static void master_answer_btn_cb(lv_event_t * e) {
     // Master doesn't submit answer to itself
 }
 
-void gui_load_master_question_screen(const char* question) {
+static void scr_delete_cb(lv_event_t * e) {
+    if(bar_timer != NULL) {
+        lv_anim_del(bar_timer, set_timer_val);
+        bar_timer = NULL;
+    }
+}
+
+void gui_load_master_question_screen(const char* question, uint32_t duration_ms) {
     scr_master_question = lv_obj_create(NULL);
     lv_obj_add_style(scr_master_question, &style_screen, 0);
+    lv_obj_add_event_cb(scr_master_question, scr_delete_cb, LV_EVENT_DELETE, NULL);
 
     // Header
     lv_obj_t * header = lv_obj_create(scr_master_question);
@@ -40,6 +57,7 @@ void gui_load_master_question_screen(const char* question) {
     bar_timer = lv_bar_create(scr_master_question);
     lv_obj_set_size(bar_timer, LV_PCT(90), 15);
     lv_obj_align(bar_timer, LV_ALIGN_TOP_MID, 0, 110);
+    lv_bar_set_range(bar_timer, 0, 100);
     lv_bar_set_value(bar_timer, 100, LV_ANIM_OFF);
 
     // Answer grid
@@ -59,11 +77,21 @@ void gui_load_master_question_screen(const char* question) {
         lv_obj_add_event_cb(btn, master_answer_btn_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
     }
 
+    // Timer Animation
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_exec_cb(&a, set_timer_val);
+    lv_anim_set_duration(&a, duration_ms);
+    lv_anim_set_var(&a, bar_timer);
+    lv_anim_set_values(&a, 100, 0);
+    lv_anim_set_ready_cb(&a, timer_ready_cb);
+    lv_anim_start(&a);
+
     lv_scr_load(scr_master_question);
 }
 
 void gui_update_master_timer(int percent) {
-    if(bar_timer != NULL) {
-        lv_bar_set_value(bar_timer, percent, LV_ANIM_ON);
+    if(bar_timer != NULL && lv_obj_is_valid(bar_timer)) {
+        lv_bar_set_value(bar_timer, percent, LV_ANIM_OFF);
     }
 }

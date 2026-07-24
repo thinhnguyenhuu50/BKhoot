@@ -16,7 +16,6 @@ static GameState_t current_state = GAME_STATE_INIT;
 // Master state
 #define MAX_PLAYERS 20
 static int connected_players = 0;
-static int current_question_timer = 0;
 static uint8_t player_macs[MAX_PLAYERS][6];
 
 // Slave state
@@ -73,11 +72,17 @@ void game_master_start_quiz(void) {
         comm_send_cmd(CMD_START_QUIZ, NULL, 0);
         
         const char *q = "What is the capital of France?";
-        comm_send_cmd(CMD_BROADCAST_QUESTION, (uint8_t*)q, strlen(q) + 1);
+        uint32_t duration = DEFAULT_QUESTION_TIMER_MS;
+        uint8_t payload[MAX_PAYLOAD];
+        memcpy(payload, &duration, sizeof(uint32_t));
+        int q_len = strlen(q) + 1;
+        if(q_len > MAX_PAYLOAD - sizeof(uint32_t)) q_len = MAX_PAYLOAD - sizeof(uint32_t);
+        memcpy(payload + sizeof(uint32_t), q, q_len);
+        payload[MAX_PAYLOAD - 1] = '\0';
         
-        gui_load_master_question_screen(q);
-        current_question_timer = 100; // 100%
-        gui_update_master_timer(current_question_timer);
+        comm_send_cmd(CMD_BROADCAST_QUESTION, payload, sizeof(uint32_t) + q_len);
+        
+        gui_load_master_question_screen(q, duration);
     }
 }
 
@@ -85,8 +90,23 @@ void game_master_next_question(void) {
     if(current_role == GAME_ROLE_MASTER) {
         current_state = GAME_STATE_QUESTION;
         const char *q = "Next question...";
-        comm_send_cmd(CMD_BROADCAST_QUESTION, (uint8_t*)q, strlen(q) + 1);
-        gui_load_master_question_screen(q);
+        uint32_t duration = DEFAULT_QUESTION_TIMER_MS;
+        uint8_t payload[MAX_PAYLOAD];
+        memcpy(payload, &duration, sizeof(uint32_t));
+        int q_len = strlen(q) + 1;
+        if(q_len > MAX_PAYLOAD - sizeof(uint32_t)) q_len = MAX_PAYLOAD - sizeof(uint32_t);
+        memcpy(payload + sizeof(uint32_t), q, q_len);
+        payload[MAX_PAYLOAD - 1] = '\0';
+        
+        comm_send_cmd(CMD_BROADCAST_QUESTION, payload, sizeof(uint32_t) + q_len);
+        gui_load_master_question_screen(q, duration);
+    }
+}
+
+void game_master_timer_timeout(void) {
+    if(current_role == GAME_ROLE_MASTER && current_state == GAME_STATE_QUESTION) {
+        current_state = GAME_STATE_RESULTS;
+        gui_load_master_leaderboard_screen();
     }
 }
 
@@ -129,18 +149,14 @@ void game_task_func(void *argument) {
                         // gui_update_master_lobby_count(connected_players);
                         break;
                     case GAME_STATE_QUESTION:
-                        // Update timer
-                        if(current_question_timer > 0) {
-                            current_question_timer -= 2; // Decrease 2% every tick
-                            gui_update_master_timer(current_question_timer);
-                        } else {
-                            current_state = GAME_STATE_RESULTS;
-                            gui_load_master_leaderboard_screen();
-                        }
+                        // UI handles timer independently via lv_timer
                         break;
                     default:
                         break;
                 }
+                break;
+            case GAME_ROLE_SLAVE:
+                // UI handles timer independently via lv_timer
                 break;
             default:
                 break;
@@ -190,10 +206,26 @@ void game_task_func(void *argument) {
                         case CMD_START_QUIZ:
                             // Quiz started!
                             break;
-                        case CMD_BROADCAST_QUESTION:
+                        case CMD_BROADCAST_QUESTION: {
                             current_state = GAME_STATE_QUESTION;
-                            gui_load_slave_answer_screen();
+                            char question[MAX_PAYLOAD + 1] = {0};
+                            uint32_t duration_ms = DEFAULT_QUESTION_TIMER_MS;
+                            if (rx_msg->len >= 4) {
+                                memcpy(&duration_ms, rx_msg->payload, 4);
+                                int q_len = rx_msg->len - 4;
+                                if (q_len > 0) {
+                                    if (q_len > MAX_PAYLOAD) q_len = MAX_PAYLOAD;
+                                    memcpy(question, rx_msg->payload + 4, q_len);
+                                    question[q_len] = '\0';
+                                } else {
+                                    strcpy(question, "Question?");
+                                }
+                            } else {
+                                strcpy(question, "Question?");
+                            }
+                            gui_load_slave_answer_screen(question, duration_ms);
                             break;
+                        }
                         case CMD_SEND_FEEDBACK: {
                             bool correct = rx_msg->payload[0];
                             current_score = (rx_msg->payload[1] << 8) | rx_msg->payload[2];
