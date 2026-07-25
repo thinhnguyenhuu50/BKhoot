@@ -34,14 +34,57 @@ static void my_disp_flush(lv_display_t * disp, const lv_area_t * area, uint8_t *
 }
 
 static void my_touchpad_read(lv_indev_t * indev, lv_indev_data_t * data) {
-    if(touch_IsTouched()) {
-        touch_Scan();
-        data->state = LV_INDEV_STATE_PRESSED;
-        data->point.x = touch_GetX();
-        data->point.y = touch_GetY();
+    static int16_t last_x = 0;
+    static int16_t last_y = 0;
+    static uint8_t current_state = LV_INDEV_STATE_RELEASED;
+    static uint8_t debounce_cnt = 0;
+    static bool first_touch = true;
+
+    bool is_touched = touch_IsTouched();
+
+    if (is_touched) {
+        if (current_state == LV_INDEV_STATE_RELEASED) {
+            debounce_cnt++;
+            if (debounce_cnt >= 2) { // Require 2 consecutive reads to confirm press
+                current_state = LV_INDEV_STATE_PRESSED;
+                debounce_cnt = 0;
+                first_touch = true;
+            }
+        } else {
+            debounce_cnt = 0; // Reset release debounce counter
+        }
     } else {
-        data->state = LV_INDEV_STATE_RELEASED;
+        if (current_state == LV_INDEV_STATE_PRESSED) {
+            debounce_cnt++;
+            if (debounce_cnt >= 3) { // Require 3 consecutive reads to confirm release (prevent bounce)
+                current_state = LV_INDEV_STATE_RELEASED;
+                debounce_cnt = 0;
+            }
+        } else {
+            debounce_cnt = 0; // Reset press debounce counter
+        }
     }
+
+    if (current_state == LV_INDEV_STATE_PRESSED) {
+        touch_Scan();
+        
+        int16_t new_x = touch_GetX();
+        int16_t new_y = touch_GetY();
+        
+        if (first_touch) {
+            last_x = new_x;
+            last_y = new_y;
+            first_touch = false;
+        } else {
+            // Software averaging (Exponential Moving Average) to smooth coordinates
+            last_x = (last_x * 3 + new_x) / 4;
+            last_y = (last_y * 3 + new_y) / 4;
+        }
+    }
+
+    data->state = current_state;
+    data->point.x = last_x;
+    data->point.y = last_y;
 }
 
 void StartTask_LVGL(void *argument) {
