@@ -53,11 +53,8 @@ void StartTask_LVGL(void *argument) {
     // Setup Display
     lv_display_t * disp = lv_display_create(LCD_W, LCD_H);
     uint32_t buf_size = LCD_W * (LCD_H / 10) * 2;
-    uint8_t * draw_buf = (uint8_t *)pvPortMalloc(buf_size);
-    if (draw_buf == NULL) {
-        debug_log("Failed to allocate draw_buf!\r\n");
-        vTaskDelete(NULL);
-    }
+    static uint8_t draw_buf[LCD_W * (LCD_H / 10) * 2];
+
     lv_display_set_buffers(disp, draw_buf, NULL, buf_size, LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(disp, my_disp_flush);
 
