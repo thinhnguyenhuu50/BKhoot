@@ -65,7 +65,7 @@ const osThreadAttr_t GUI_Task_attributes = {
   .cb_size = sizeof(GUI_TaskControlBlock),
   .stack_mem = &GUI_TaskBuffer[0],
   .stack_size = sizeof(GUI_TaskBuffer),
-  .priority = (osPriority_t) osPriorityNormal,
+  .priority = (osPriority_t) osPriorityRealtime,
 };
 /* Definitions for Communication_T */
 osThreadId_t Communication_THandle;

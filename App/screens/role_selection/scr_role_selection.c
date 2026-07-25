@@ -49,5 +49,5 @@ void gui_load_role_selection_screen(void) {
     lv_obj_center(lbl_slave);
     lv_obj_add_event_cb(btn_slave, role_btn_event_cb, LV_EVENT_CLICKED, (void*)1);
 
-    lv_scr_load_anim(scr_role_selection, LV_SCR_LOAD_ANIM_NONE, 300, 0, true);
+    lv_scr_load_anim(scr_role_selection, LV_SCR_LOAD_ANIM_FADE_ON, 300, 0, true);
 }
