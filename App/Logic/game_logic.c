@@ -7,6 +7,7 @@
 #include "protocol.h"
 #include "usart.h"
 #include "rs232.h"
+#include "questions_data.h"
 
 // Game state variables
 extern osMessageQueueId_t commQueueHandle;
@@ -17,6 +18,7 @@ static GameState_t current_state = GAME_STATE_INIT;
 #define MAX_PLAYERS 20
 static int connected_players = 0;
 static uint8_t player_macs[MAX_PLAYERS][6];
+static int current_question_index = 0;
 
 // Slave state
 #define MAX_HOSTS 10
@@ -66,40 +68,60 @@ void comm_send_cmd(uint8_t cmd, uint8_t *payload, uint8_t len) {
 }
 
 // Master Callbacks
+static void master_broadcast_current_question(void) {
+    const char *q = question_bank[current_question_index].question;
+    uint32_t duration = question_bank[current_question_index].timeLimitSec * 1000;
+    uint8_t payload[MAX_PAYLOAD];
+    int offset = 0;
+    
+    memcpy(payload + offset, &duration, sizeof(uint32_t));
+    offset += sizeof(uint32_t);
+    
+    int len = strlen(q) + 1;
+    if(offset + len > MAX_PAYLOAD) len = MAX_PAYLOAD - offset;
+    memcpy(payload + offset, q, len);
+    if(len > 0) payload[offset + len - 1] = '\0';
+    offset += len;
+    
+    for (int i = 0; i < 4; i++) {
+        const char *opt = question_bank[current_question_index].options[i];
+        len = strlen(opt) + 1;
+        if(offset + len > MAX_PAYLOAD) len = MAX_PAYLOAD - offset;
+        if (len > 0) {
+            memcpy(payload + offset, opt, len);
+            payload[offset + len - 1] = '\0';
+            offset += len;
+        }
+    }
+    
+    comm_send_cmd(CMD_BROADCAST_QUESTION, payload, offset);
+    gui_load_master_question_screen(q, duration);
+}
+
 void game_master_start_quiz(void) {
     if(current_role == GAME_ROLE_MASTER && current_state == GAME_STATE_LOBBY) {
         current_state = GAME_STATE_QUESTION;
         comm_send_cmd(CMD_START_QUIZ, NULL, 0);
         
-        const char *q = "What is the capital of France?";
-        uint32_t duration = DEFAULT_QUESTION_TIMER_MS;
-        uint8_t payload[MAX_PAYLOAD];
-        memcpy(payload, &duration, sizeof(uint32_t));
-        int q_len = strlen(q) + 1;
-        if(q_len > MAX_PAYLOAD - sizeof(uint32_t)) q_len = MAX_PAYLOAD - sizeof(uint32_t);
-        memcpy(payload + sizeof(uint32_t), q, q_len);
-        payload[MAX_PAYLOAD - 1] = '\0';
+        current_question_index = 0;
+        if (question_bank_size == 0) return; // Safety check
         
-        comm_send_cmd(CMD_BROADCAST_QUESTION, payload, sizeof(uint32_t) + q_len);
-        
-        gui_load_master_question_screen(q, duration);
+        master_broadcast_current_question();
     }
 }
 
 void game_master_next_question(void) {
     if(current_role == GAME_ROLE_MASTER) {
+        current_question_index++;
+        if (current_question_index >= question_bank_size) {
+            // End of quiz
+            current_state = GAME_STATE_RESULTS;
+            gui_load_master_leaderboard_screen();
+            return;
+        }
+
         current_state = GAME_STATE_QUESTION;
-        const char *q = "Next question...";
-        uint32_t duration = DEFAULT_QUESTION_TIMER_MS;
-        uint8_t payload[MAX_PAYLOAD];
-        memcpy(payload, &duration, sizeof(uint32_t));
-        int q_len = strlen(q) + 1;
-        if(q_len > MAX_PAYLOAD - sizeof(uint32_t)) q_len = MAX_PAYLOAD - sizeof(uint32_t);
-        memcpy(payload + sizeof(uint32_t), q, q_len);
-        payload[MAX_PAYLOAD - 1] = '\0';
-        
-        comm_send_cmd(CMD_BROADCAST_QUESTION, payload, sizeof(uint32_t) + q_len);
-        gui_load_master_question_screen(q, duration);
+        master_broadcast_current_question();
     }
 }
 
@@ -211,22 +233,39 @@ void game_task_func(void *argument) {
                         case CMD_BROADCAST_QUESTION: {
                             current_state = GAME_STATE_QUESTION;
                             char question[MAX_PAYLOAD + 1] = {0};
+                            const char *options[4] = {NULL, NULL, NULL, NULL};
+                            char opts_buffer[4][64] = {0};
+                            
                             uint32_t duration_ms = DEFAULT_QUESTION_TIMER_MS;
+                            int offset = 0;
+                            
+                            if (rx_msg->len > 0) {
+                                rx_msg->payload[rx_msg->len - 1] = '\0';
+                            }
+                            
                             if (rx_msg->len >= 4) {
                                 memcpy(&duration_ms, rx_msg->payload, 4);
-                                int q_len = rx_msg->len - 4;
-                                if (q_len > 0) {
-                                    if (q_len > MAX_PAYLOAD) q_len = MAX_PAYLOAD;
-                                    memcpy(question, rx_msg->payload + 4, q_len);
-                                    question[q_len] = '\0';
-                                } else {
-                                    strcpy(question, "Question?");
+                                offset += 4;
+                                
+                                if (offset < rx_msg->len) {
+                                    strncpy(question, (char*)&rx_msg->payload[offset], MAX_PAYLOAD);
+                                    question[MAX_PAYLOAD] = '\0';
+                                    offset += strlen((char*)&rx_msg->payload[offset]) + 1;
+                                }
+                                
+                                for (int i = 0; i < 4; i++) {
+                                    if (offset < rx_msg->len) {
+                                        strncpy(opts_buffer[i], (char*)&rx_msg->payload[offset], 63);
+                                        opts_buffer[i][63] = '\0';
+                                        options[i] = opts_buffer[i];
+                                        offset += strlen((char*)&rx_msg->payload[offset]) + 1;
+                                    }
                                 }
                             } else {
                                 strcpy(question, "Question?");
                             }
                             app_lv_lock();
-                            gui_load_slave_answer_screen(question, duration_ms);
+                            gui_load_slave_answer_screen(question, options, duration_ms);
                             app_lv_unlock();
                             break;
                         }

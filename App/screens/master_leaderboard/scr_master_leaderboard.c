@@ -1,8 +1,13 @@
 #include "scr_master_leaderboard.h"
 #include "ui_styles.h"
+#include "game_logic.h"
 #include <stddef.h>
 
 static lv_obj_t * scr_master_leaderboard;
+
+static void master_next_cb(lv_event_t * e) {
+    game_master_next_question();
+}
 
 void gui_load_master_leaderboard_screen(void) {
     scr_master_leaderboard = lv_obj_create(NULL);
@@ -23,8 +28,8 @@ void gui_load_master_leaderboard_screen(void) {
     lv_label_set_text(lbl_next, "Next");
     lv_obj_center(lbl_next);
     
-    // In a real app, you'd trigger next question
-    // lv_obj_add_event_cb(btn_next, master_next_cb, LV_EVENT_CLICKED, NULL);
+    // Trigger next question
+    lv_obj_add_event_cb(btn_next, master_next_cb, LV_EVENT_CLICKED, NULL);
 
     lv_scr_load_anim(scr_master_leaderboard, LV_SCR_LOAD_ANIM_FADE_ON, 300, 0, true);
 }

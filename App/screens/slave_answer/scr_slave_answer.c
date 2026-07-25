@@ -34,7 +34,7 @@ static void scr_delete_cb(lv_event_t * e) {
     }
 }
 
-void gui_load_slave_answer_screen(const char* question, uint32_t duration_ms) {
+void gui_load_slave_answer_screen(const char* question, const char *options[4], uint32_t duration_ms) {
     scr_slave_answer = lv_obj_create(NULL);
     lv_obj_add_style(scr_slave_answer, &style_screen, 0);
     lv_obj_add_event_cb(scr_slave_answer, scr_delete_cb, LV_EVENT_DELETE, NULL);
@@ -75,6 +75,18 @@ void gui_load_slave_answer_screen(const char* question, uint32_t duration_ms) {
         int y_ofs = (i < 2) ? 140 : (140 + btn_h + padding);
         lv_obj_align(btn, LV_ALIGN_TOP_MID, x_ofs, y_ofs);
         
+        lv_obj_t * lbl = lv_label_create(btn);
+        if (options && options[i] && options[i][0] != '\0') {
+            lv_label_set_text(lbl, options[i]);
+        } else {
+            // Default color names if no options provided
+            const char *default_colors[] = {"Red", "Blue", "Yellow", "Green"};
+            lv_label_set_text(lbl, default_colors[i]);
+        }
+        lv_label_set_long_mode(lbl, LV_LABEL_LONG_SCROLL_CIRCULAR);
+        lv_obj_set_width(lbl, LV_PCT(90)); // allow scrolling if text is too long
+        lv_obj_center(lbl);
+
         lv_obj_add_event_cb(btn, slave_answer_btn_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
     }
 

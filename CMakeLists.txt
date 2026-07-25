@@ -55,9 +55,21 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
 )
 
+# Generate questions from JSON before building
+add_custom_command(
+    OUTPUT ${CMAKE_SOURCE_DIR}/App/Logic/questions_data.c ${CMAKE_SOURCE_DIR}/App/Logic/questions_data.h
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/generate_questions.py 
+            ${CMAKE_SOURCE_DIR}/App/questions.json 
+            ${CMAKE_SOURCE_DIR}/App/Logic/questions_data.h 
+            ${CMAKE_SOURCE_DIR}/App/Logic/questions_data.c
+    DEPENDS ${CMAKE_SOURCE_DIR}/App/questions.json ${CMAKE_SOURCE_DIR}/scripts/generate_questions.py
+    COMMENT "Generating C question bank from JSON"
+)
+
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
+    ${CMAKE_SOURCE_DIR}/App/Logic/questions_data.c
     ${CMAKE_SOURCE_DIR}/App/gui_app.c
     ${CMAKE_SOURCE_DIR}/App/Logic/game_logic.c
     ${CMAKE_SOURCE_DIR}/App/Logic/protocol.c
