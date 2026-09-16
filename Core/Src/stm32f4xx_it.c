@@ -22,6 +22,7 @@
 #include "stm32f4xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -88,16 +89,51 @@ void NMI_Handler(void)
 /**
   * @brief This function handles Hard fault interrupt.
   */
-void HardFault_Handler(void)
+/* USER CODE BEGIN HardFault_PV */
+/* Prints the faulting PC/LR/registers over huart1 (blocking, no IT/DMA/RTOS
+ * dependency) so the crash site can be identified from the .map file. */
+void prvGetRegistersFromStack(uint32_t *pulFaultStackAddress)
+{
+  volatile uint32_t r0  = pulFaultStackAddress[0];
+  volatile uint32_t r1  = pulFaultStackAddress[1];
+  volatile uint32_t r2  = pulFaultStackAddress[2];
+  volatile uint32_t r3  = pulFaultStackAddress[3];
+  volatile uint32_t r12 = pulFaultStackAddress[4];
+  volatile uint32_t lr  = pulFaultStackAddress[5];
+  volatile uint32_t pc  = pulFaultStackAddress[6];
+  volatile uint32_t psr = pulFaultStackAddress[7];
+  volatile uint32_t cfsr = SCB->CFSR;
+  volatile uint32_t hfsr = SCB->HFSR;
+  volatile uint32_t mmfar = SCB->MMFAR;
+  volatile uint32_t bfar = SCB->BFAR;
+
+  char buf[220];
+  int len = snprintf(buf, sizeof(buf),
+      "\r\n!!! HARDFAULT !!! PC=0x%08lX LR=0x%08lX PSR=0x%08lX\r\n"
+      "R0=0x%08lX R1=0x%08lX R2=0x%08lX R3=0x%08lX R12=0x%08lX\r\n"
+      "CFSR=0x%08lX HFSR=0x%08lX MMFAR=0x%08lX BFAR=0x%08lX\r\n",
+      pc, lr, psr, r0, r1, r2, r3, r12, cfsr, hfsr, mmfar, bfar);
+  if (len > 0) {
+      HAL_UART_Transmit(&huart1, (uint8_t *)buf, (uint16_t)len, 1000);
+  }
+
+  while (1) {}
+}
+/* USER CODE END HardFault_PV */
+__attribute__((naked)) void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
-
+  /* naked: no prologue, so lr/msp/psp are exactly as the CPU left them */
+  __asm volatile
+  (
+    " tst lr, #4                                                \n"
+    " ite eq                                                    \n"
+    " mrseq r0, msp                                             \n"
+    " mrsne r0, psp                                             \n"
+    " ldr r1, =prvGetRegistersFromStack                         \n"
+    " bx r1                                                     \n"
+  );
   /* USER CODE END HardFault_IRQn 0 */
-  while (1)
-  {
-    /* USER CODE BEGIN W1_HardFault_IRQn 0 */
-    /* USER CODE END W1_HardFault_IRQn 0 */
-  }
 }
 
 /**

@@ -29,6 +29,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "rs232.h"
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -62,11 +63,68 @@ void SystemClock_Config(void);
 void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
 void HAL_DMA_TxCpltCallback(DMA_HandleTypeDef *hdma);
+static void ExtSRAM_SelfTest(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/**
+ * @brief Exhaustively write/read-back the external FSMC SRAM (ucExternalHeap)
+ *        before FreeRTOS is allowed to carve task stacks out of it. Reports
+ *        pass/fail (and the first bad address) over huart1 with a blocking
+ *        transmit, since neither the RTOS nor DMA are up yet at this point.
+ */
+static void ExtSRAM_SelfTest(void)
+{
+  volatile uint16_t *sram = (volatile uint16_t *)ucExternalHeap;
+  const uint32_t words = sizeof(ucExternalHeap) / sizeof(uint16_t);
+  uint32_t bad_index = words; /* sentinel: no failure */
+  uint16_t bad_expected = 0, bad_actual = 0;
+  char msg[112];
+  int len;
 
+  /* Pass 1: address-derived pattern (catches stuck/shorted address lines) */
+  for (uint32_t i = 0; i < words; i++) {
+    sram[i] = (uint16_t)i;
+  }
+  for (uint32_t i = 0; i < words; i++) {
+    uint16_t actual = sram[i];
+    if (actual != (uint16_t)i) {
+      bad_index = i;
+      bad_expected = (uint16_t)i;
+      bad_actual = actual;
+      break;
+    }
+  }
+
+  /* Pass 2: inverted pattern (catches stuck data lines), only if pass 1 ok */
+  if (bad_index == words) {
+    for (uint32_t i = 0; i < words; i++) {
+      sram[i] = (uint16_t)(~i);
+    }
+    for (uint32_t i = 0; i < words; i++) {
+      uint16_t actual = sram[i];
+      if (actual != (uint16_t)(~i)) {
+        bad_index = i;
+        bad_expected = (uint16_t)(~i);
+        bad_actual = actual;
+        break;
+      }
+    }
+  }
+
+  if (bad_index == words) {
+    len = snprintf(msg, sizeof(msg), "EXTSRAM self-test: PASS (%lu bytes)\r\n",
+                    (unsigned long)sizeof(ucExternalHeap));
+  } else {
+    len = snprintf(msg, sizeof(msg),
+                    "EXTSRAM self-test: FAIL at 0x%08lX exp=0x%04X got=0x%04X\r\n",
+                    (unsigned long)&sram[bad_index], bad_expected, bad_actual);
+  }
+  if (len > 0) {
+    HAL_UART_Transmit(&huart1, (uint8_t *)msg, (uint16_t)len, 2000);
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -105,6 +163,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  ExtSRAM_SelfTest();
   vPortDefineHeapRegions(xHeapRegions);
   HAL_DMA_RegisterCallback(&hdma_memtomem_dma2_stream0, HAL_DMA_XFER_CPLT_CB_ID, HAL_DMA_TxCpltCallback);
     
