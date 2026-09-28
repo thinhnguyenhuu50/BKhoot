@@ -46,7 +46,11 @@ typedef StaticTask_t osStaticThreadDef_t;
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
-
+/* Serializes comm_send_cmd(): the GUI task and the game task both send frames on USART2 */
+osMutexId_t uart2_tx_mutexHandle;
+const osMutexAttr_t uart2_tx_mutex_attributes = {
+  .name = "uart2_tx_mutex"
+};
 /* USER CODE END Variables */
 /* Definitions for ledBlinkingTask */
 osThreadId_t ledBlinkingTaskHandle;
@@ -137,6 +141,7 @@ void MX_FREERTOS_Init(void) {
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
+  uart2_tx_mutexHandle = osMutexNew(&uart2_tx_mutex_attributes);
   /* USER CODE END RTOS_MUTEX */
 
   /* Create the semaphores(s) */

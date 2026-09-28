@@ -11,6 +11,7 @@
 
 // Game state variables
 extern osMessageQueueId_t commQueueHandle;
+extern osMutexId_t uart2_tx_mutexHandle;
 static GameRole_t current_role = GAME_ROLE_NONE;
 static GameState_t current_state = GAME_STATE_INIT;
 
@@ -71,7 +72,11 @@ static int find_player_index(const uint8_t *mac) {
     return -1;
 }
 
-// Helper to send command to ESP8266
+// Helper to send command to ESP8266.
+// Both the GUI task (UI callbacks) and the game task call this. Without the mutex, a
+// frame sent while the other task is mid-transmit gets HAL_BUSY and is silently lost.
+// Callers may already hold the LVGL lock, but nothing takes the LVGL lock while holding
+// this one, so the two locks can't deadlock.
 void comm_send_cmd(uint8_t cmd, uint8_t *payload, uint8_t len) {
     protocol_msg_t msg;
     msg.cmd = cmd;
@@ -79,11 +84,18 @@ void comm_send_cmd(uint8_t cmd, uint8_t *payload, uint8_t len) {
     if (len > 0 && payload != NULL) {
         memcpy(msg.payload, payload, len);
     }
-    
+
     uint8_t tx_buf[MAX_PAYLOAD + 4];
     int frame_len = protocol_build_frame(tx_buf, &msg);
     debug_log("TX ESP CMD:%02X, LEN:%d\r\n", cmd, len);
-    HAL_UART_Transmit(&huart2, tx_buf, frame_len, 100);
+
+    osMutexAcquire(uart2_tx_mutexHandle, osWaitForever);
+    HAL_StatusTypeDef status = HAL_UART_Transmit(&huart2, tx_buf, frame_len, 100);
+    osMutexRelease(uart2_tx_mutexHandle);
+
+    if (status != HAL_OK) {
+        debug_log("TX ESP CMD:%02X failed, HAL status %d\r\n", cmd, status);
+    }
 }
 
 // Tell a slave which ID it was assigned: [target MAC(6)][player ID(1)]

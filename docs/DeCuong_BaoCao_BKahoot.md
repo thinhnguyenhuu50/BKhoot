@@ -723,7 +723,7 @@ Bảng 7.5 – Danh sách màn hình:
 - LVGL **không thread-safe**. Vì vậy chỉ GUI task được gọi `lv_timer_handler`, và task khác muốn gọi API LVGL phải bọc lời gọi bằng `app_lv_lock()`/`app_lv_unlock()`.
 - Callback sự kiện của LVGL chạy trong lúc GUI task **đang giữ khóa**, nên:
   - không được lock lần nữa (mutex không đệ quy);
-  - không nên block lâu. Lưu ý `comm_send_cmd` gửi UART dạng blocking, mất tới khoảng 18 ms.
+  - không nên block lâu. Lưu ý `comm_send_cmd` gửi UART dạng blocking, mất tới khoảng 18 ms, và có thể phải chờ thêm `uart2_tx_mutex` (tối đa khoảng 1,5 ms) nếu Game task đang gửi.
 - Chi tiết được trình bày ở mục 9.2.
 
 ---
@@ -824,7 +824,7 @@ Bảng 9.1 – Các task trên STM32:
   - Cần thảo luận phương án ngược lại (GUI ưu tiên thấp nhất, giao tiếp ưu tiên cao nhất, đây là khuyến nghị phổ biến) và **đo đạc** để quyết định.
 - **Stack của GUI** được cấp phát tĩnh trong SRAM trong, vì bộ vẽ LVGL dùng stack nhiều và truy cập liên tục (commit *"LCD task uses internal SRAM"* và *"reduce the stack size of the gui task"*). Định cỡ stack dựa trên high-water mark (lệnh `1`).
 - **Game task polling 100 ms thay vì block trên queue**, vì còn phải kiểm tra cờ timer. Phương án tốt hơn: dùng task notification hoặc event flags (`osThreadFlags`) để vừa block vừa nhận được nhiều nguồn sự kiện, và giảm độ trễ (hiện có thể trễ tới 100 ms).
-- **Communication_T gần như rảnh**: đề xuất cho task này làm chủ sở hữu duy nhất của đường TX USART2 (xem mục 9.2b).
+- **Communication_T gần như rảnh**. Hiện đường TX USART2 được bảo vệ bằng mutex (mục 9.2b). Phương án cho task này làm chủ sở hữu duy nhất của đường TX (hàng đợi TX + DMA) được so sánh trong Bảng 9.8 và đưa vào hướng phát triển.
 
 **So sánh – biện luận**
 - Bảng 9.4 – Mô hình thực thi: super-loop + ngắt · **FreeRTOS (chọn)** · Zephyr/RT-Thread. Tiêu chí: độ phức tạp khi phải chạy song song GUI, giao tiếp và console; hỗ trợ trong CubeMX; tài liệu; kích thước bộ nhớ chiếm dụng; mục tiêu học tập.
@@ -836,6 +836,7 @@ Bảng 9.1 – Các task trên STM32:
   - ISR: hình chữ nhật đỏ có biểu tượng tia sét.
   - Queue: hình ống (`commQueue` 10 con trỏ, `uartRxQueue` 3 × u16).
   - `lvgl_mutex`: ổ khóa, nối nét đứt tới GUI_Task và Game task.
+  - `uart2_tx_mutex`: ổ khóa thứ hai đặt trên đường tới USART2, nối nét đứt tới GUI_Task và Game task. Vẽ thêm một mũi tên nhỏ `lvgl_mutex → uart2_tx_mutex` ghi "thứ tự khóa".
   - `uart_tx_sem`: nối tới `debug_log` (mọi task gọi) và tới ISR USART1 TC.
   - Ngoại vi (USART2, USART1, DMA2, LCD) đặt ở rìa sơ đồ.
   - Chiều mũi tên là chiều đi của dữ liệu.
@@ -859,19 +860,39 @@ Bảng 9.1 – Các task trên STM32:
   - Nếu 10 khung đến trong lúc Game task đang xử lý một phần tử, phần tử đó cũng có thể bị ghi đè.
   - Điều kiện an toàn: số phần tử của pool ≥ độ sâu queue + 1 + số phần tử consumer đang giữ. Cách khác: dùng queue sao chép theo giá trị, hoặc dùng free-list.
 
-**(b) Đường gửi dữ liệu tới ESP8266**
-- `comm_send_cmd` tạo khung trên stack → ghi log bằng `debug_log` → gửi bằng `HAL_UART_Transmit` dạng **blocking** (timeout 100 ms; khung 204 B mất khoảng 17,7 ms).
-- Hàm này được gọi từ **hai ngữ cảnh**:
-  - GUI task: trong các callback UI như start, next, scan, join, submit.
-  - Game task: khi gửi feedback, host_found, join_ack, time_up.
-- Vì vậy hai task có thể dùng `huart2` cùng lúc. Khi đó HAL trả `HAL_BUSY` cho lời gọi đến sau và **khung đó bị mất mà không có thông báo**.
-- Cần phân tích khả năng xảy ra (thấp nhưng có thật) và đề xuất cách sửa: thêm mutex cho TX, hoặc dùng hàng đợi TX với Communication_T là chủ sở hữu duy nhất của đường gửi, kết hợp DMA.
+**(b) Đường gửi dữ liệu tới ESP8266 và mutex `uart2_tx_mutex`**
+- **Trình tự trong `comm_send_cmd`**:
+  1. Tạo khung trên stack.
+  2. Ghi log bằng `debug_log`.
+  3. **Lấy `uart2_tx_mutex`**.
+  4. Gửi bằng `HAL_UART_Transmit` dạng **blocking** (timeout 100 ms; khung 204 B mất khoảng 17,7 ms).
+  5. **Nhả mutex**.
+  6. Nếu HAL không trả `HAL_OK` thì ghi log `TX ESP CMD:xx failed`.
+- **Vấn đề phát hiện khi rà soát an toàn luồng** (nên trình bày theo thứ tự *phát hiện → phân tích → giải pháp*):
+  - Hàm này được gọi từ **hai ngữ cảnh**:
+    - GUI task: trong các callback UI, gồm Start và Next (phía Host), Refresh, chọn phòng và chọn đáp án (phía Player).
+    - Game task: khi gửi `HOST_FOUND`, `JOIN_ACK`, `SEND_FEEDBACK` (không giữ khóa LVGL) và `TIME_UP` (có giữ khóa LVGL, nên không thể chạy cùng lúc với callback UI).
+  - Trên KIT Player, Game task không gửi gì, nên tranh chấp **chỉ xảy ra trên KIT Host**.
+  - **Kịch bản lỗi**: Game task đang gửi `JOIN_ACK` (lúc này `gState = BUSY_TX`) thì GUI task (ưu tiên Realtime) chen vào vì Host vừa bấm Start.
+    - `HAL_UART_Transmit` trả `HAL_BUSY`, nên khung `START_QUIZ`/`BROADCAST_QUESTION` bị mất.
+    - Giá trị trả về lại bị bỏ qua, nên **không có log nào**. Kết quả: Player không nhận được câu hỏi, còn Host vẫn chạy đồng hồ.
+  - HAL kiểm tra `gState` rồi mới đặt `BUSY_TX`, và hai bước này **không nguyên tử**. Vì vậy cờ trạng thái của HAL không thể dùng làm khóa giữa các task.
+- **Giải pháp đã áp dụng**: dùng mutex `uart2_tx_mutex` bao quanh **riêng lời gọi `HAL_UART_Transmit`**.
+  - Mutex được tạo trong `MX_FREERTOS_Init`, ở vùng `USER CODE BEGIN RTOS_MUTEX`, tức là trước khi bất kỳ task nào chạy. Khi CubeMX sinh lại code, vùng này được giữ nguyên. Mutex **không được khai báo trong `.ioc`**.
+  - Việc tạo khung và `debug_log` nằm ngoài mutex, để đoạn găng ngắn nhất có thể.
+  - **Thứ tự khóa**: luôn là `lvgl_mutex` → `uart2_tx_mutex`, không bao giờ ngược lại, vì trong lúc giữ `uart2_tx_mutex` không có lời gọi nào lấy khóa LVGL. Nhờ vậy **không thể xảy ra deadlock**.
+  - **Kế thừa ưu tiên**: trên FreeRTOS, mutex CMSIS-RTOS2 (loại không đệ quy) được tạo bằng `xSemaphoreCreateMutex`, nên có sẵn kế thừa ưu tiên. Khi GUI (Realtime) phải chờ mutex do Game task (Normal) đang giữ, Game task được nâng ưu tiên để gửi xong nhanh.
+  - **Chi phí**: các khung Game task gửi đều ngắn (`HOST_FOUND` 17 B, khoảng 1,5 ms; `SEND_FEEDBACK` 12 B; `JOIN_ACK` 11 B), nên GUI task chờ **không quá khoảng 1,5 ms**, trừ khi UART bị lỗi và phải chờ hết timeout 100 ms. Ngược lại, Game task có thể phải chờ tới khoảng 17,7 ms khi GUI đang gửi câu hỏi, và mức này chấp nhận được.
+  - Giải pháp **chưa được kiểm chứng trên phần cứng**; cần chạy TC-18 ở Chương 10.
+
+- **Vị trí sửa trong mã**: [game_logic.c](../App/Logic/game_logic.c) (`comm_send_cmd`), [freertos.c](../Core/Src/freertos.c) (các vùng `USER CODE BEGIN Variables` và `RTOS_MUTEX`).
 
 **(c) Khóa LVGL (`lvgl_mutex`)**
 - **Quy tắc**: GUI task giữ khóa trong suốt `lv_timer_handler`; task khác gọi `gui_*` thì phải bọc bằng `app_lv_lock`/`app_lv_unlock`; callback UI (đang giữ khóa) được phép gọi `game_*`, nên `game_*` **không được** lock thêm lần nữa.
 - Khóa này **kiêm luôn vai trò "khóa trạng thái trò chơi"** cho các chuyển trạng thái quan trọng (`master_end_question` kiểm tra `current_state` khi đang giữ khóa).
-  - Được: chỉ có một khóa thô nên không có vấn đề thứ tự khóa, tránh được deadlock.
+  - Được: chỉ cần một khóa thô cho cả giao diện và trạng thái trò chơi, nên dễ suy luận.
   - Mất: giảm khả năng chạy song song.
+- **Quy tắc thứ tự khóa của toàn hệ thống**: chỉ được lấy `uart2_tx_mutex` khi đang giữ `lvgl_mutex`, không được làm ngược lại (xem mục (b)). Nên vẽ quy tắc này thành một mũi tên duy nhất trong Hình 9.1.
 - **Dùng mutex (có kế thừa ưu tiên) thay vì semaphore nhị phân**, để tránh đảo ngược ưu tiên giữa GUI (Realtime) và Game (Normal).
 - **Cờ `volatile master_timer_expired`**: chuyển sự kiện từ GUI task sang Game task mà không cần khóa, vì việc ghi một word trên Cortex-M4 là nguyên tử.
 
@@ -887,15 +908,32 @@ Bảng 9.1 – Các task trên STM32:
   - Stream buffer/ring buffer theo byte, parse trong task: ISR ngắn nhất.
   - DMA + IDLE, parse trong task.
   - Tiêu chí: an toàn khi gọi từ ISR, chi phí sao chép, RAM, độ phức tạp, nguy cơ mất dữ liệu.
-- Bảng 9.7 – Cơ chế đồng bộ: mutex · semaphore nhị phân · critical section/tắt ngắt · task notification/event flags · biến `volatile`. Với mỗi cơ chế, ghi khi nào nên dùng và **dự án đang dùng nó ở đâu**.
+- Bảng 9.7 – Cơ chế đồng bộ: mutex · semaphore nhị phân · critical section/tắt ngắt · task notification/event flags · biến `volatile`. Với mỗi cơ chế, ghi khi nào nên dùng và **dự án đang dùng nó ở đâu** (ví dụ mutex: `lvgl_mutex`, `uart2_tx_mutex`; semaphore nhị phân: `uart_tx_sem`; biến `volatile`: `master_timer_expired`).
+- Bảng 9.8 – Bảo vệ đường gửi USART2:
+
+  | Phương án | Ưu điểm | Nhược điểm |
+  |---|---|---|
+  | **Mutex bao quanh `HAL_UART_Transmit` (chọn)** | Sửa ít, không đổi kiến trúc; có kế thừa ưu tiên | Task gọi vẫn bị block trong lúc gửi; GUI có thể đứng tới khoảng 18 ms khi gửi câu hỏi |
+  | Hàng đợi TX + Communication_T là chủ sở hữu duy nhất + DMA | Task gọi không bị block; tận dụng được task đang rảnh | Thêm queue và bộ đệm khung; phải xử lý khi hàng đợi đầy; phức tạp hơn |
+  | Critical section hoặc tắt ngắt quanh lệnh gửi | Đơn giản | Tắt ngắt tới khoảng 17,7 ms làm mất byte nhận trên USART2/USART1 và trễ tick, nên **không chấp nhận được** |
+  | Chỉ cho một task gửi (callback UI chuyển sự kiện sang Game task) | Không cần khóa | Phải sửa lại luồng UI → logic; phản hồi chậm thêm tới 100 ms do polling |
+  | Kiểm tra `HAL_BUSY` rồi thử gửi lại | Không cần RTOS | Phải chờ bận; không đảm bảo thành công; thứ tự các khung không xác định |
+
+  Kết luận: trong phạm vi đồ án, chọn mutex vì sửa ít mà đủ an toàn. Hàng đợi TX kết hợp DMA được đưa vào hướng phát triển.
 
 **Hình vẽ**
 - *Hình 9.3 – Luồng dữ liệu của đường nhận* (draw.io). Chân RX của USART2 → (ISR: `parse_byte`) → `msg_pool[0..9]` vẽ thành dãy ô, có mũi tên chỉ `pool_idx` → (đẩy con trỏ) → `commQueue` → (Game task: lấy ra, `switch`) → `gui_*` (qua mutex) hoặc `comm_send_cmd` → chân TX của USART2. Tô **hai màu nền** để phân biệt vùng "ngữ cảnh ISR" và vùng "ngữ cảnh task".
-- *Hình 9.4 – Trước và sau khi sửa HardFault* (hai sequence diagram đặt cạnh nhau): bên trái là cấp phát trong ISR dẫn tới HardFault, bên phải là dùng pool tĩnh. Dùng hình này trong mục bài học.
+- *Hình 9.4 – Hai lỗi an toàn luồng, trước và sau khi sửa* (PlantUML, 2 hàng × 2 sequence diagram). Dùng hình này ở mục 9.2 và mục bài học 11.3.
+  - (a) HardFault: bên trái là cấp phát trong ISR dẫn tới HardFault; bên phải là dùng pool tĩnh.
+  - (b) Tranh chấp USART2: lifeline Game task, GUI task, `huart2`.
+    - Bên trái (trước khi sửa): Game gửi `JOIN_ACK` (BUSY_TX) → GUI chen vào, gửi `START_QUIZ` → `HAL_BUSY` → khung bị mất (ghi chú "không có log").
+    - Bên phải (sau khi sửa): GUI gọi `osMutexAcquire` và bị block → Game được nâng ưu tiên (ghi chú "priority inheritance") → Game gửi xong, nhả mutex → GUI gửi `START_QUIZ`.
 - *Hình 9.5 – Ma trận sở hữu tài nguyên* (vẽ dạng bảng).
   - Hàng: các tài nguyên dùng chung (đối tượng LVGL, trạng thái trò chơi, `huart2` TX, `huart1` TX, `msg_pool`, heap).
   - Cột: các ngữ cảnh truy cập (GUI task, Game task, CommandParser, ISR USART2, ISR USART1/DMA).
-  - Mỗi ô ghi R/W và cơ chế bảo vệ (mutex, semaphore, hoặc không có). Tô đỏ ô "`huart2` TX: GUI ghi, Game ghi, **không có bảo vệ**".
+  - Mỗi ô ghi R/W và cơ chế bảo vệ (mutex, semaphore, hoặc không có).
+  - Ô "`huart2` TX: GUI ghi, Game ghi, bảo vệ bằng `uart2_tx_mutex`" có thể thêm chú thích "trước khi sửa: không có bảo vệ", để thấy phát hiện này đến từ việc lập ma trận.
+  - Ô `msg_pool` (ISR ghi, Game đọc, chỉ dựa vào queue) nên tô vàng để nhắc tới giới hạn đã nêu ở mục (a).
 
 ### 9.3 Mở rộng bộ nhớ bằng SRAM ngoài
 
@@ -931,7 +969,7 @@ Bảng 9.1 – Các task trên STM32:
   2. Buffer tĩnh 1/10 màn hình trong SRAM trong (`13bb872`).
   3. 2 buffer, mỗi buffer 1/4 màn hình, trong SRAM ngoài (`ecde361`).
 
-Bảng 9.8 – Phân bố bộ nhớ (cột "Kích thước" ghi số đo từ file `.map` và lệnh `1`):
+Bảng 9.9 – Phân bố bộ nhớ (cột "Kích thước" ghi số đo từ file `.map` và lệnh `1`):
 
 | Đối tượng | Kích thước | Vùng nhớ | Lý do |
 |---|---|---|---|
@@ -943,7 +981,7 @@ Bảng 9.8 – Phân bố bộ nhớ (cột "Kích thước" ghi số đo từ f
 | `question_bank` | N × 388 B | Flash | Hằng số |
 | Buffer RS232 (`rx_buffer` 128 B, `tx_buf` 256 B) | 384 B | SRAM trong | Dùng cho DMA |
 
-**So sánh – biện luận** (Bảng 9.9 – Chiến lược heap):
+**So sánh – biện luận** (Bảng 9.10 – Chiến lược heap):
 - heap_4 chỉ trong SRAM trong (khoảng 120 KB): không đủ.
 - **heap_5 chỉ dùng SRAM ngoài (chọn)**.
 - heap_5 nhiều vùng (SRAM trong và SRAM ngoài, ưu tiên vùng trong).
@@ -1002,6 +1040,7 @@ Bảng 10.1 – Test case. Các cột: *Mã · Mục tiêu · Các bước · K�
 | TC-15 | Cự ly và vật cản: 1, 5, 10, 20 m và qua tường |
 | TC-16 | Tải: số Player tối đa có thể thử (theo số KIT hiện có) |
 | TC-17 | Sửa `questions.json` → build → câu hỏi mới hiện đúng |
+| TC-18 | Tranh chấp USART2 trên Host: bấm Start/Next đúng lúc một Player đang vào phòng hoặc đang quét phòng, lặp lại ≥ 20 lần. Mong đợi: mọi Player đều nhận câu hỏi, log RS232 không có dòng `TX ESP CMD:xx failed`. Nếu được, chạy thêm bản firmware cũ (không có mutex) để so sánh số lần mất khung |
 
 ### 10.3 Đo đạc định lượng
 
@@ -1031,7 +1070,7 @@ Bảng 10.2 – Các chỉ số. Các cột: *Chỉ số · Cách đo · Kết q
 - **Ưu điểm**: một firmware cho mọi KIT; không cần hạ tầng mạng; phát hiện được người chơi rớt; giao diện mượt; dễ thay đổi bộ câu hỏi.
 - **Hạn chế**, tổng hợp từ các chương:
   - Checksum XOR yếu.
-  - `huart2` có thể bị hai task gửi cùng lúc.
+  - Đường TX USART2 đã có mutex, nhưng vẫn gửi dạng blocking trong ngữ cảnh GUI task.
   - Pool có kích thước bằng độ sâu queue.
   - Slot peer trên ESP không được dùng lại.
   - Player không nhận thông báo kết thúc trận.
@@ -1060,9 +1099,9 @@ Bảng 10.2 – Các chỉ số. Các cột: *Chỉ số · Cách đo · Kết q
 |---|---|---|---|---|---|
 | **1** | Dựng nền tảng và viết đặc tả | Tạo dự án CubeMX và chuyển sang CMake (preset, toolchain); clock 168 MHz; task LED nhịp tim; cấu hình FSMC cho LCD và SRAM ngoài; USART1 với `debug_log` qua DMA | Cài ESP8266_RTOS_SDK; nháy LED/PWM; echo UART; viết **đặc tả giao thức v1** (định dạng khung, bảng lệnh); viết `protocol.c/h` và test trên PC bằng gcc, gồm cả khung lỗi | Tìm hiểu LVGL 9; viết driver ILI9341, XPT2046 và AT24C (hiệu chuẩn); đưa LVGL vào CMake (cùng A); vẽ **wireframe 10 màn hình** và luồng chuyển màn | **M1**: LVGL hiển thị và nhận chạm trên KIT; log RS232 chạy; có đặc tả giao thức v1 |
 | **2** | Hạ tầng hệ thống và liên kết hai chip | heap_5 trên SRAM ngoài (section linker, self-test); `--wrap malloc`; DMA mem→mem cho flush (cùng C); console lệnh và thống kê RTOS; định cỡ stack | ESP-NOW broadcast giữa 2 ESP8266; cầu nối UART↔ESP-NOW (task RX/TX, task ESP-NOW); `ESP_READY`, `ESP_LOG`; đường nhận USART2 phía STM32 (ISR, parser, queue) | Style chung; các màn role_selection, master_lobby, slave_scan, slave_waiting; lọc và chống dội cảm ứng; khung `game_logic` (vai trò, trạng thái, API `game_*`) | **M2**: STM32 và ESP8266 trao đổi được khung có checksum; chuyển được giữa các màn tĩnh; báo cáo bộ nhớ lần 1 |
-| **3** | Chạy được trò chơi từ đầu đến cuối | Rà soát an toàn luồng (quy tắc `app_lv_lock`, mutex); hỗ trợ tìm nguyên nhân HardFault (thêm log trong fault handler); thử các kích thước và vị trí draw buffer, đo FPS | Luồng tìm và vào phòng (SCAN, HOST_FOUND, JOIN, chèn/bóc MAC); phát câu hỏi; nhận đáp án; **pool tĩnh cho ISR** | Màn master_question và slave_answer (có thanh thời gian); FSM của Host và Player; ngân hàng câu hỏi JSON, `generate_questions.py` và `add_custom_command` | **M3**: 1 Host và 1 Player chơi trọn một câu hỏi từ đầu đến cuối |
+| **3** | Chạy được trò chơi từ đầu đến cuối | Rà soát an toàn luồng (quy tắc `app_lv_lock`, lập ma trận sở hữu tài nguyên, thêm `uart2_tx_mutex` cho USART2); hỗ trợ tìm nguyên nhân HardFault (thêm log trong fault handler); thử các kích thước và vị trí draw buffer, đo FPS | Luồng tìm và vào phòng (SCAN, HOST_FOUND, JOIN, chèn/bóc MAC); phát câu hỏi; nhận đáp án; **pool tĩnh cho ISR** | Màn master_question và slave_answer (có thanh thời gian); FSM của Host và Player; ngân hàng câu hỏi JSON, `generate_questions.py` và `add_custom_command` | **M3**: 1 Host và 1 Player chơi trọn một câu hỏi từ đầu đến cuối |
 | **4** | Tăng độ tin cậy và hoàn thiện tính năng | Làm màn hình bền vững (hỗ trợ C, đo trước và sau); chuyển sang 2 draw buffer trong SRAM ngoài; đo heap và stack; cấu hình Release | Chuyển từ broadcast sang **unicast + ACK**; bảng peer và bộ đếm lỗi; `PLAYER_DROPPED`; Host cấp ID; vào lại giữ nguyên điểm; đo sơ bộ tỷ lệ gửi thành công | Chấm điểm và phản hồi; Leaderboard và Congrats (sắp xếp ổn định); màn Time's up; kết thúc câu sớm; xử lý nút Home; hoàn thiện UX; cập nhật bộ câu hỏi | **M4**: đủ tính năng, chạy được với ≥ 3 KIT; **đóng băng tính năng** |
-| **5** | Thử nghiệm, sửa lỗi, viết báo cáo | Chạy TC-01, 02, 14; đo FPS và tốc độ SRAM; viết Ch.2, 3, 9; vẽ các hình 2.x, 3.x, 9.x | Chạy TC-04 đến 11, 15, 16 (giao thức, cự ly, độ trễ); viết Ch.4, 6; tổng hợp Ch.10 | Chạy TC-03, 12, 13, 17 (giao diện, câu hỏi); viết Ch.1, 5, 7, 8; quay video demo | **M5**: gắn tag firmware `v1.0`; nộp báo cáo, slide và video |
+| **5** | Thử nghiệm, sửa lỗi, viết báo cáo | Chạy TC-01, 02, 14; đo FPS và tốc độ SRAM; viết Ch.2, 3, 9; vẽ các hình 2.x, 3.x, 9.x | Chạy TC-04 đến 11, 15, 16, 18 (giao thức, cự ly, độ trễ, tranh chấp USART2); viết Ch.4, 6; tổng hợp Ch.10 | Chạy TC-03, 12, 13, 17 (giao diện, câu hỏi); viết Ch.1, 5, 7, 8; quay video demo | **M5**: gắn tag firmware `v1.0`; nộp báo cáo, slide và video |
 
 - **Cả nhóm trong tuần 5**: dành 2 ngày đầu để cùng tìm và sửa lỗi; viết Ch.11 và Ch.12; **đọc chéo** (A đọc chương của B, B đọc của C, C đọc của A); làm slide.
 - **Nhịp phối hợp**: họp 15 phút vào đầu tuần để chốt việc. Cuối mỗi tuần có một buổi **tích hợp trên nhánh `main`** và demo đúng mốc tuần đó. Mỗi người làm trên nhánh tính năng riêng (ví dụ nhánh `esp8266` như trong lịch sử git), và nhánh chỉ được merge sau khi một người khác đã review.
@@ -1081,7 +1120,7 @@ Bảng 10.2 – Các chỉ số. Các cột: *Chỉ số · Cách đo · Kết q
 
 ### 11.3 Khó khăn và bài học kinh nghiệm
 
-**Nội dung cần viết**: lấy từ lịch sử git, mỗi mục viết theo ba ý *hiện tượng → nguyên nhân → cách khắc phục → bài học*:
+**Nội dung cần viết**: lấy từ lịch sử git và quá trình rà soát mã, mỗi mục viết theo bốn ý *hiện tượng → nguyên nhân → cách khắc phục → bài học*:
 1. **HardFault do cấp phát bộ nhớ trong ISR**: chuyển sang pool tĩnh (`9937657`).
 2. **Thiếu 2 chân địa chỉ SRAM ngoài trong CubeMX**: LCD và SRAM chạy sai; viết thêm self-test.
 3. **Bộ nhớ và stack của GUI task**: chuyển stack GUI sang cấp phát tĩnh trong SRAM trong; di chuyển draw buffer qua nhiều phương án.
@@ -1090,6 +1129,7 @@ Bảng 10.2 – Các chỉ số. Các cột: *Chỉ số · Cách đo · Kết q
 6. **Broadcast bị mất gói mà không biết**: chuyển sang unicast có ACK.
 7. **UART0 của ESP8266 vừa dùng cho console vừa dùng nối STM32**: tắt console và chuyển log qua STM32.
 8. **ESP8266 không khởi động**: phải đặt `ESP_POWER` ở mức cao ngay từ đầu.
+9. **Mất khung khi hai task cùng gửi trên USART2**: lỗi này không phải phát hiện khi test mà phát hiện khi rà soát mã nguồn. HAL trả `HAL_BUSY` nhưng giá trị trả về bị bỏ qua, nên lỗi không để lại dấu vết nào. Cách sửa là thêm `uart2_tx_mutex` và ghi log khi gửi thất bại. Bài học: mọi tài nguyên phần cứng dùng chung giữa các task cần có chủ sở hữu hoặc khóa rõ ràng, và không được bỏ qua mã lỗi của HAL.
 
 ---
 
@@ -1101,7 +1141,7 @@ Bảng 10.2 – Các chỉ số. Các cột: *Chỉ số · Cách đo · Kết q
   1. Tính điểm theo thời gian trả lời; thêm lệnh `GAME_OVER` và gửi hạng tới từng Player.
   2. Font tiếng Việt.
   3. Kiểm tra dữ liệu ngân hàng câu hỏi; hỗ trợ nhiều bộ đề; nạp câu hỏi qua RS232 hoặc thẻ SD mà không cần build lại.
-  4. Dùng CRC-16 và COBS cho khung UART; thêm hàng đợi TX kèm mutex cho USART2; tăng pool lên ít nhất bằng độ sâu queue + 1; dùng lại slot peer trên ESP.
+  4. Dùng CRC-16 và COBS cho khung UART; chuyển TX USART2 từ mutex + blocking sang hàng đợi TX + DMA do Communication_T sở hữu; tăng pool lên ít nhất bằng độ sâu queue + 1; dùng lại slot peer trên ESP.
   5. Game task block bằng event flags thay cho polling 100 ms.
   6. Mã hóa ESP-NOW (PMK/LMK); chọn kênh tự động; đặt tên phòng khác nhau.
   7. Dùng chân `ESP_BUSY` để điều khiển luồng; dùng thạch anh HSE.
@@ -1178,7 +1218,7 @@ Bảng 10.2 – Các chỉ số. Các cột: *Chỉ số · Cách đo · Kết q
 | 9.1 | Task và IPC | Task diagram | draw.io | A |
 | 9.2 | Timeline thực thi | Timing (số đo) | WaveDrom / logic analyzer | A |
 | 9.3 | Đường nhận ISR → task | Data-flow | draw.io | B |
-| 9.4 | HardFault: trước và sau | UML sequence ×2 | PlantUML | B |
+| 9.4 | HardFault và tranh chấp USART2: trước và sau | UML sequence ×4 | PlantUML | B |
 | 9.5 | Ma trận sở hữu tài nguyên | Bảng | – | A |
 | 9.6 | Bản đồ bộ nhớ | Memory map | draw.io | A |
 | 9.7 | Chuỗi cấp phát | Block diagram | draw.io | A |
