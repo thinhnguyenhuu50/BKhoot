@@ -18,6 +18,7 @@ static GameState_t current_state = GAME_STATE_INIT;
 #define MAX_PLAYERS 20
 static int connected_players = 0;
 static uint8_t player_macs[MAX_PLAYERS][6];
+static uint8_t player_scores[MAX_PLAYERS];
 static int current_question_index = 0;
 
 // Slave state
@@ -37,6 +38,7 @@ void game_set_role(GameRole_t role) {
         case GAME_ROLE_MASTER:
             current_state = GAME_STATE_LOBBY;
             connected_players = 0;
+            memset(player_scores, 0, sizeof(player_scores));
             break;
         case GAME_ROLE_SLAVE:
             current_state = GAME_STATE_INIT; // Scanning state
@@ -52,6 +54,15 @@ GameRole_t game_get_role(void) {
 }
 
 // Master Callbacks
+static int find_player_index(const uint8_t *mac) {
+    for (int i = 0; i < connected_players; i++) {
+        if (memcmp(player_macs[i], mac, 6) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 // Helper to send command to ESP8266
 void comm_send_cmd(uint8_t cmd, uint8_t *payload, uint8_t len) {
     protocol_msg_t msg;
@@ -250,7 +261,7 @@ void game_task_func(void *argument) {
                         }
                         case CMD_SEND_FEEDBACK: {
                             bool correct = rx_msg->payload[0];
-                            current_score = (rx_msg->payload[1] << 8) | rx_msg->payload[2];
+                            current_score = rx_msg->payload[1];
                             app_lv_lock();
                             gui_load_slave_feedback_screen(correct, current_score);
                             app_lv_unlock();
@@ -281,17 +292,22 @@ void game_task_func(void *argument) {
                             if (rx_msg->len >= 7 && current_question_index < question_bank_size) {
                                 uint8_t ans = rx_msg->payload[6];
                                 bool correct = (ans == question_bank[current_question_index].answerIndex);
-                                
-                                uint8_t feedback[3];
+
+                                int player_idx = find_player_index(rx_msg->payload);
+                                if (correct && player_idx >= 0) {
+                                    player_scores[player_idx]++;
+                                }
+                                uint8_t score = (player_idx >= 0) ? player_scores[player_idx] : 0;
+
+                                uint8_t feedback[2];
                                 feedback[0] = correct;
-                                feedback[1] = 0; // Mock score high byte
-                                feedback[2] = correct ? 100 : 0; // Mock score low byte
-                                
-                                uint8_t fb_payload[9];
+                                feedback[1] = score;
+
+                                uint8_t fb_payload[8];
                                 memcpy(fb_payload, rx_msg->payload, 6); // Target MAC
-                                memcpy(&fb_payload[6], feedback, 3);
-                                
-                                comm_send_cmd(CMD_SEND_FEEDBACK, fb_payload, 9);
+                                memcpy(&fb_payload[6], feedback, 2);
+
+                                comm_send_cmd(CMD_SEND_FEEDBACK, fb_payload, 8);
                             }
                             break;
                         }
