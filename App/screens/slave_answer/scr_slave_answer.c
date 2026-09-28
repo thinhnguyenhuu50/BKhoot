@@ -7,6 +7,7 @@
 
 static lv_obj_t * scr_slave_answer;
 static lv_obj_t * label_question = NULL;
+static lv_obj_t * label_player_id = NULL;
 static lv_obj_t * bar_timer = NULL;
 static lv_obj_t * label_options[4] = { NULL };
 
@@ -36,7 +37,7 @@ static void scr_unloaded_cb(lv_event_t * e) {
     }
 }
 
-void gui_load_slave_answer_screen(const char* question, const char *options[4], uint32_t duration_ms) {
+void gui_load_slave_answer_screen(const char* question, const char *options[4], uint32_t duration_ms, uint8_t player_id) {
     if (scr_slave_answer == NULL) {
         scr_slave_answer = lv_obj_create(NULL);
         lv_obj_add_style(scr_slave_answer, &style_screen, 0);
@@ -55,6 +56,13 @@ void gui_load_slave_answer_screen(const char* question, const char *options[4], 
         lv_obj_align(label_question, LV_ALIGN_CENTER, 20, 0);
 
         create_home_btn(scr_slave_answer, LV_ALIGN_TOP_LEFT, 10, 10);
+
+        // Player ID, centered under the 40x40 home button
+        label_player_id = lv_label_create(scr_slave_answer);
+        lv_obj_set_width(label_player_id, 40);
+        lv_obj_add_style(label_player_id, &style_title, 0);
+        lv_obj_set_style_text_align(label_player_id, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_align(label_player_id, LV_ALIGN_TOP_LEFT, 10, 56);
 
         // Timer Bar
         bar_timer = lv_bar_create(scr_slave_answer);
@@ -87,6 +95,12 @@ void gui_load_slave_answer_screen(const char* question, const char *options[4], 
     }
 
     lv_label_set_text(label_question, question);
+
+    if (player_id > 0) {
+        lv_label_set_text_fmt(label_player_id, "P%d", player_id);
+    } else {
+        lv_label_set_text(label_player_id, "P?");
+    }
 
     const char *default_colors[] = {"Red", "Blue", "Yellow", "Green"};
     for(int i = 0; i < 4; i++) {

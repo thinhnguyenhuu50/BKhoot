@@ -4,6 +4,13 @@
 #include <stdint.h>
 
 #define DEFAULT_QUESTION_TIMER_MS 30000
+#define MAX_PLAYERS 20
+
+// One row of the master's ranking, shown to the host as "P<player_id>"
+typedef struct {
+    uint8_t player_id;
+    uint8_t score;
+} PlayerRank_t;
 
 typedef enum {
     GAME_ROLE_NONE,

@@ -146,7 +146,7 @@ static void espnow_main_thread(void *arg) {
             
             int data_len = 2;
             
-            if (msg->cmd == CMD_JOIN_HOST || msg->cmd == CMD_SEND_FEEDBACK) {
+            if (msg->cmd == CMD_JOIN_HOST || msg->cmd == CMD_SEND_FEEDBACK || msg->cmd == CMD_JOIN_ACK) {
                 // These commands contain MAC in the payload. We extract it to know who to send to.
                 uint8_t target_mac[6];
                 memcpy(target_mac, msg->payload, 6);
@@ -154,8 +154,8 @@ static void espnow_main_thread(void *arg) {
                 // Track link quality for this peer (adds it as an ESP-NOW peer if needed).
                 track_peer(target_mac);
 
-                // For SEND_FEEDBACK, we skip MAC in the ESP-NOW payload
-                if (msg->cmd == CMD_SEND_FEEDBACK) {
+                // For SEND_FEEDBACK and JOIN_ACK (player ID), we skip MAC in the ESP-NOW payload
+                if (msg->cmd == CMD_SEND_FEEDBACK || msg->cmd == CMD_JOIN_ACK) {
                     espnow_data[1] = msg->len - 6; // Adjust len
                     if (msg->len > 6) {
                         memcpy(&espnow_data[2], &msg->payload[6], msg->len - 6);

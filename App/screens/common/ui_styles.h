@@ -2,6 +2,7 @@
 #define UI_STYLES_H
 
 #include "lvgl.h"
+#include "game_logic.h"
 
 // Expose styles
 extern lv_style_t style_screen;
@@ -17,5 +18,9 @@ void init_styles(void);
 // Common UI elements
 void create_home_btn(lv_obj_t * parent, lv_align_t align, int32_t x_ofs, int32_t y_ofs);
 void home_btn_cb(lv_event_t * e);
+
+// Scrollable "rank. P<id> ... score" list; caller sets its size and position
+lv_obj_t * create_ranking_list(lv_obj_t * parent);
+void update_ranking_list(lv_obj_t * list, const PlayerRank_t *ranking, int count);
 
 #endif // UI_STYLES_H

@@ -9,6 +9,7 @@
 #include "scr_master_lobby.h"
 #include "scr_master_question.h"
 #include "scr_master_leaderboard.h"
+#include "scr_master_congrats.h"
 #include "scr_slave_scan.h"
 #include "scr_slave_waiting.h"
 #include "scr_slave_answer.h"

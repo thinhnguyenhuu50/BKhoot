@@ -15,7 +15,9 @@ static GameRole_t current_role = GAME_ROLE_NONE;
 static GameState_t current_state = GAME_STATE_INIT;
 
 // Master state
-#define MAX_PLAYERS 20
+// Players are never removed from these arrays, so a player's index is stable
+// and doubles as its ID: slot 0 is P1, slot 1 is P2, ...
+#define PLAYER_ID(idx) ((uint8_t)((idx) + 1))
 static int connected_players = 0;
 static uint8_t player_macs[MAX_PLAYERS][6];
 static uint8_t player_scores[MAX_PLAYERS];
@@ -25,6 +27,7 @@ static int current_question_index = 0;
 // Slave state
 #define MAX_HOSTS 10
 static int current_score = 0;
+static uint8_t player_id = 0; // Assigned by the master via CMD_JOIN_ACK, 0 = not assigned yet
 static uint8_t discovered_hosts[MAX_HOSTS][6];
 static int discovered_hosts_count = 0;
 
@@ -45,6 +48,7 @@ void game_set_role(GameRole_t role) {
         case GAME_ROLE_SLAVE:
             current_state = GAME_STATE_INIT; // Scanning state
             discovered_hosts_count = 0;
+            player_id = 0;
             break;
         default:
             break;
@@ -78,6 +82,31 @@ void comm_send_cmd(uint8_t cmd, uint8_t *payload, uint8_t len) {
     int frame_len = protocol_build_frame(tx_buf, &msg);
     debug_log("TX ESP CMD:%02X, LEN:%d\r\n", cmd, len);
     HAL_UART_Transmit(&huart2, tx_buf, frame_len, 100);
+}
+
+// Tell a slave which ID it was assigned: [target MAC(6)][player ID(1)]
+static void master_send_player_id(int player_idx) {
+    uint8_t payload[7];
+    memcpy(payload, player_macs[player_idx], 6);
+    payload[6] = PLAYER_ID(player_idx);
+    comm_send_cmd(CMD_JOIN_ACK, payload, sizeof(payload));
+}
+
+// Fill `ranking` (MAX_PLAYERS entries) with every player, highest score first.
+// Players with equal scores keep their join order. Returns the number of entries.
+static int master_build_ranking(PlayerRank_t *ranking) {
+    int count = 0;
+    for (int i = 0; i < connected_players; i++) {
+        PlayerRank_t entry = { .player_id = PLAYER_ID(i), .score = player_scores[i] };
+        int j = count;
+        while (j > 0 && ranking[j - 1].score < entry.score) {
+            ranking[j] = ranking[j - 1];
+            j--;
+        }
+        ranking[j] = entry;
+        count++;
+    }
+    return count;
 }
 
 // Master Callbacks
@@ -129,7 +158,9 @@ void game_master_next_question(void) {
         if (current_question_index >= question_bank_size) {
             // End of quiz
             current_state = GAME_STATE_RESULTS;
-            gui_load_master_leaderboard_screen();
+            PlayerRank_t ranking[MAX_PLAYERS];
+            int count = master_build_ranking(ranking);
+            gui_load_master_congrats_screen(ranking, count);
             return;
         }
 
@@ -141,7 +172,9 @@ void game_master_next_question(void) {
 void game_master_timer_timeout(void) {
     if(current_role == GAME_ROLE_MASTER && current_state == GAME_STATE_QUESTION) {
         current_state = GAME_STATE_RESULTS;
-        gui_load_master_leaderboard_screen();
+        PlayerRank_t ranking[MAX_PLAYERS];
+        int count = master_build_ranking(ranking);
+        gui_load_master_leaderboard_screen(ranking, count);
     }
 }
 
@@ -156,6 +189,7 @@ void game_slave_scan_hosts(void) {
 void game_slave_join_host(int host_id) {
     if(current_role == GAME_ROLE_SLAVE) {
         current_state = GAME_STATE_LOBBY;
+        player_id = 0; // The host we join assigns a fresh ID
         if (host_id >= 0 && host_id < discovered_hosts_count) {
             comm_send_cmd(CMD_JOIN_HOST, discovered_hosts[host_id], 6);
         }
@@ -257,10 +291,17 @@ void game_task_func(void *argument) {
                                 strcpy(question, "Question?");
                             }
                             app_lv_lock();
-                            gui_load_slave_answer_screen(question, options, duration_ms);
+                            gui_load_slave_answer_screen(question, options, duration_ms, player_id);
                             app_lv_unlock();
                             break;
                         }
+                        case CMD_JOIN_ACK:
+                            // The ESP8266 strips the target MAC, leaving just [player ID]
+                            if (rx_msg->len == 1) {
+                                player_id = rx_msg->payload[0];
+                                debug_log("Assigned player ID: P%d\r\n", player_id);
+                            }
+                            break;
                         case CMD_SEND_FEEDBACK: {
                             bool correct = rx_msg->payload[0];
                             current_score = rx_msg->payload[1];
@@ -281,16 +322,22 @@ void game_task_func(void *argument) {
                             comm_send_cmd(CMD_HOST_FOUND, (uint8_t*)lobby_name, strlen(lobby_name) + 1);
                             break;
                         }
-                        case CMD_JOIN_HOST:
-                            if (connected_players < MAX_PLAYERS && rx_msg->len >= 6) {
-                                memcpy(player_macs[connected_players], rx_msg->payload, 6);
-                                player_active[connected_players] = true;
-                                connected_players++;
+                        case CMD_JOIN_HOST: {
+                            if (rx_msg->len < 6) break;
+                            // A slave that rejoins keeps its old slot, so its ID and score survive
+                            int idx = find_player_index(rx_msg->payload);
+                            if (idx < 0) {
+                                if (connected_players >= MAX_PLAYERS) break;
+                                idx = connected_players++;
+                                memcpy(player_macs[idx], rx_msg->payload, 6);
                                 app_lv_lock();
                                 gui_update_master_lobby_count(connected_players);
                                 app_lv_unlock();
                             }
+                            player_active[idx] = true;
+                            master_send_player_id(idx);
                             break;
+                        }
                         case CMD_PLAYER_DROPPED: {
                             // ESP8266 gave up on this slave's link (too many missed ACKs).
                             if (rx_msg->len >= 6) {

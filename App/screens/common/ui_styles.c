@@ -71,3 +71,51 @@ void create_home_btn(lv_obj_t * parent, lv_align_t align, int32_t x_ofs, int32_t
     lv_obj_center(lbl);
     lv_obj_add_event_cb(btn, home_btn_cb, LV_EVENT_CLICKED, NULL);
 }
+
+lv_obj_t * create_ranking_list(lv_obj_t * parent) {
+    lv_obj_t * list = lv_obj_create(parent);
+    lv_obj_add_style(list, &style_header_panel, 0);
+    lv_obj_set_style_radius(list, 8, 0);
+    lv_obj_set_flex_flow(list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(list, 4, 0);
+    return list;
+}
+
+void update_ranking_list(lv_obj_t * list, const PlayerRank_t *ranking, int count) {
+    lv_obj_clean(list);
+
+    if (count == 0) {
+        lv_obj_t * lbl = lv_label_create(list);
+        lv_label_set_text(lbl, "No players joined");
+        lv_obj_add_style(lbl, &style_text, 0);
+        return;
+    }
+
+    int rank = 1;
+    for (int i = 0; i < count; i++) {
+        // Equal scores share a rank: 1, 1, 3, ...
+        if (i > 0 && ranking[i].score < ranking[i - 1].score) {
+            rank = i + 1;
+        }
+
+        lv_obj_t * row = lv_obj_create(list);
+        lv_obj_remove_style_all(row);
+        lv_obj_remove_flag(row, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_size(row, LV_PCT(100), 22);
+
+        lv_obj_t * lbl_player = lv_label_create(row);
+        lv_label_set_text_fmt(lbl_player, "%d.  P%d", rank, ranking[i].player_id);
+        lv_obj_add_style(lbl_player, &style_text, 0);
+        lv_obj_align(lbl_player, LV_ALIGN_LEFT_MID, 0, 0);
+
+        lv_obj_t * lbl_score = lv_label_create(row);
+        lv_label_set_text_fmt(lbl_score, "%d", ranking[i].score);
+        lv_obj_add_style(lbl_score, &style_text, 0);
+        lv_obj_align(lbl_score, LV_ALIGN_RIGHT_MID, 0, 0);
+
+        if (rank == 1 && ranking[i].score > 0) {
+            lv_obj_set_style_text_color(lbl_player, lv_color_hex(0xD89E00), 0);
+            lv_obj_set_style_text_color(lbl_score, lv_color_hex(0xD89E00), 0);
+        }
+    }
+}

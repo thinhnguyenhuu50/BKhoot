@@ -78,6 +78,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/App/screens/master_lobby/scr_master_lobby.c
     ${CMAKE_SOURCE_DIR}/App/screens/master_question/scr_master_question.c
     ${CMAKE_SOURCE_DIR}/App/screens/master_leaderboard/scr_master_leaderboard.c
+    ${CMAKE_SOURCE_DIR}/App/screens/master_congrats/scr_master_congrats.c
     ${CMAKE_SOURCE_DIR}/App/screens/slave_scan/scr_slave_scan.c
     ${CMAKE_SOURCE_DIR}/App/screens/slave_waiting/scr_slave_waiting.c
     ${CMAKE_SOURCE_DIR}/App/screens/slave_answer/scr_slave_answer.c
@@ -98,6 +99,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/App/screens/master_lobby
     ${CMAKE_SOURCE_DIR}/App/screens/master_question
     ${CMAKE_SOURCE_DIR}/App/screens/master_leaderboard
+    ${CMAKE_SOURCE_DIR}/App/screens/master_congrats
     ${CMAKE_SOURCE_DIR}/App/screens/slave_scan
     ${CMAKE_SOURCE_DIR}/App/screens/slave_waiting
     ${CMAKE_SOURCE_DIR}/App/screens/slave_answer
