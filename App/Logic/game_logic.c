@@ -19,6 +19,7 @@ static GameState_t current_state = GAME_STATE_INIT;
 static int connected_players = 0;
 static uint8_t player_macs[MAX_PLAYERS][6];
 static uint8_t player_scores[MAX_PLAYERS];
+static bool player_active[MAX_PLAYERS];
 static int current_question_index = 0;
 
 // Slave state
@@ -39,6 +40,7 @@ void game_set_role(GameRole_t role) {
             current_state = GAME_STATE_LOBBY;
             connected_players = 0;
             memset(player_scores, 0, sizeof(player_scores));
+            memset(player_active, 0, sizeof(player_active));
             break;
         case GAME_ROLE_SLAVE:
             current_state = GAME_STATE_INIT; // Scanning state
@@ -282,12 +284,27 @@ void game_task_func(void *argument) {
                         case CMD_JOIN_HOST:
                             if (connected_players < MAX_PLAYERS && rx_msg->len >= 6) {
                                 memcpy(player_macs[connected_players], rx_msg->payload, 6);
+                                player_active[connected_players] = true;
                                 connected_players++;
                                 app_lv_lock();
                                 gui_update_master_lobby_count(connected_players);
                                 app_lv_unlock();
                             }
                             break;
+                        case CMD_PLAYER_DROPPED: {
+                            // ESP8266 gave up on this slave's link (too many missed ACKs).
+                            if (rx_msg->len >= 6) {
+                                int idx = find_player_index(rx_msg->payload);
+                                if (idx >= 0 && player_active[idx]) {
+                                    player_active[idx] = false;
+                                    int active_count = 0;
+                                    for (int i = 0; i < connected_players; i++) {
+                                        if (player_active[i]) active_count++;
+                                    }
+                                }
+                            }
+                            break;
+                        }
                         case CMD_SUBMIT_ANSWER: {
                             if (rx_msg->len >= 7 && current_question_index < question_bank_size) {
                                 uint8_t ans = rx_msg->payload[6];

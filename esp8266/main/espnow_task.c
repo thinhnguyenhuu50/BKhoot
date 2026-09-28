@@ -8,15 +8,82 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <string.h>
+#include <stdbool.h>
 
 static const char *TAG = "ESPNOW_TASK";
 
 static uint8_t broadcast_mac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
+// Tracks the reliability of each unicast peer (question targets on the master,
+// the joined host on a slave) so a consistently-failing link can be dropped.
+#define MAX_TRACKED_PEERS   20
+#define PEER_MISS_THRESHOLD 3
+
+typedef struct {
+    uint8_t mac[6];
+    uint8_t miss_count;
+    bool active;
+} peer_link_t;
+
+static peer_link_t tracked_peers[MAX_TRACKED_PEERS];
+static int tracked_peers_count = 0;
+
+// The host a slave has joined; only slaves use this.
+static uint8_t joined_host_mac[6];
+static bool has_joined_host = false;
+
+static peer_link_t *find_tracked_peer(const uint8_t *mac) {
+    for (int i = 0; i < tracked_peers_count; i++) {
+        if (tracked_peers[i].active && memcmp(tracked_peers[i].mac, mac, 6) == 0) {
+            return &tracked_peers[i];
+        }
+    }
+    return NULL;
+}
+
+// Starts tracking a peer's link quality, adding it as an ESP-NOW peer if needed.
+static peer_link_t *track_peer(const uint8_t *mac) {
+    peer_link_t *p = find_tracked_peer(mac);
+    if (p != NULL) return p;
+    if (tracked_peers_count >= MAX_TRACKED_PEERS) return NULL;
+
+    if (!esp_now_is_peer_exist(mac)) {
+        esp_now_peer_info_t peerInfo = {};
+        memcpy(peerInfo.peer_addr, mac, 6);
+        peerInfo.channel = 1;
+        peerInfo.encrypt = false;
+        esp_now_add_peer(&peerInfo);
+    }
+
+    p = &tracked_peers[tracked_peers_count++];
+    memcpy(p->mac, mac, 6);
+    p->miss_count = 0;
+    p->active = true;
+    return p;
+}
+
+// Removes a peer whose link has gone bad and tells the STM32 so it can update the game/UI.
+static void drop_peer(const uint8_t *mac) {
+    peer_link_t *p = find_tracked_peer(mac);
+    if (p != NULL) p->active = false;
+
+    if (esp_now_is_peer_exist(mac)) {
+        esp_now_del_peer(mac);
+    }
+
+    ESP_LOGW(TAG, "Dropping weak peer " MACSTR, MAC2STR(mac));
+
+    protocol_msg_t drop_msg;
+    drop_msg.cmd = CMD_PLAYER_DROPPED;
+    drop_msg.len = 6;
+    memcpy(drop_msg.payload, mac, 6);
+    uart_task_send(&drop_msg);
+}
+
 // ESP-NOW Receive Callback
 static void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int len) {
     if (len < 2) return; // Need at least cmd + len
-    
+
     // We can directly package it into a protocol message to send to STM32
     protocol_msg_t msg;
     msg.cmd = data[0];
@@ -24,11 +91,17 @@ static void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int len
     if (msg.len > 0 && (len >= msg.len + 2)) {
         memcpy(msg.payload, &data[2], msg.len);
     }
-    
+
+    // A slave just joined us: start tracking its link so we can unicast
+    // questions to it (with delivery ACKs) and detect a weak connection.
+    if (msg.cmd == CMD_JOIN_HOST) {
+        track_peer(mac_addr);
+    }
+
     // Some commands need MAC address injected, like QUESTION_RECEIVED might just be payload
     // Let's create specific protocol frames for STM32
     protocol_msg_t out_msg;
-    
+
     if (msg.cmd == CMD_HOST_FOUND || msg.cmd == CMD_JOIN_HOST || msg.cmd == CMD_SUBMIT_ANSWER) {
         out_msg.cmd = msg.cmd;
         out_msg.len = 6 + msg.len;
@@ -42,10 +115,21 @@ static void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int len
     }
 }
 
-// ESP-NOW Send Callback
+// ESP-NOW Send Callback: this is our delivery ACK for unicast sends.
 static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status) {
-    // Optionally handle send failure, but for ESP-NOW UDP-like behavior, we just log
-    ESP_LOGD(TAG, "Send to " MACSTR ", status: %d", MAC2STR(mac_addr), status);
+    peer_link_t *p = find_tracked_peer(mac_addr);
+    if (p == NULL) return; // Untracked target (e.g. broadcast) - nothing to do.
+
+    if (status == ESP_NOW_SEND_SUCCESS) {
+        p->miss_count = 0;
+        return;
+    }
+
+    p->miss_count++;
+    ESP_LOGW(TAG, "Send miss #%d to " MACSTR, p->miss_count, MAC2STR(mac_addr));
+    if (p->miss_count >= PEER_MISS_THRESHOLD) {
+        drop_peer(mac_addr);
+    }
 }
 
 static void espnow_main_thread(void *arg) {
@@ -66,16 +150,10 @@ static void espnow_main_thread(void *arg) {
                 // These commands contain MAC in the payload. We extract it to know who to send to.
                 uint8_t target_mac[6];
                 memcpy(target_mac, msg->payload, 6);
-                
-                // Add peer if not exists
-                if (!esp_now_is_peer_exist(target_mac)) {
-                    esp_now_peer_info_t peerInfo = {};
-                    memcpy(peerInfo.peer_addr, target_mac, 6);
-                    peerInfo.channel = 1;
-                    peerInfo.encrypt = false;
-                    esp_now_add_peer(&peerInfo);
-                }
-                
+
+                // Track link quality for this peer (adds it as an ESP-NOW peer if needed).
+                track_peer(target_mac);
+
                 // For SEND_FEEDBACK, we skip MAC in the ESP-NOW payload
                 if (msg->cmd == CMD_SEND_FEEDBACK) {
                     espnow_data[1] = msg->len - 6; // Adjust len
@@ -84,12 +162,33 @@ static void espnow_main_thread(void *arg) {
                         data_len += (msg->len - 6);
                     }
                 } else {
-                    // For JOIN_HOST, maybe just send the command to the host
-                    espnow_data[1] = 0; 
+                    // JOIN_HOST: remember the host so we can later unicast answers to it.
+                    memcpy(joined_host_mac, target_mac, 6);
+                    has_joined_host = true;
+                    espnow_data[1] = 0;
                 }
                 esp_now_send(target_mac, espnow_data, data_len);
-                
-            } else if (msg->cmd == CMD_BROADCAST_QUESTION || msg->cmd == CMD_SCAN_HOSTS) {
+
+            } else if (msg->cmd == CMD_BROADCAST_QUESTION) {
+                // Unicast to every known slave instead of broadcasting, so each
+                // delivery is hardware-ACKed via espnow_send_cb.
+                if (msg->len > 0) {
+                    memcpy(&espnow_data[2], msg->payload, msg->len);
+                    data_len += msg->len;
+                }
+                for (int i = 0; i < tracked_peers_count; i++) {
+                    if (tracked_peers[i].active) {
+                        esp_now_send(tracked_peers[i].mac, espnow_data, data_len);
+                    }
+                }
+            } else if (msg->cmd == CMD_SUBMIT_ANSWER && has_joined_host) {
+                // Unicast the answer to the joined host so we get a delivery ACK too.
+                if (msg->len > 0) {
+                    memcpy(&espnow_data[2], msg->payload, msg->len);
+                    data_len += msg->len;
+                }
+                esp_now_send(joined_host_mac, espnow_data, data_len);
+            } else if (msg->cmd == CMD_SCAN_HOSTS) {
                 if (msg->len > 0) {
                     memcpy(&espnow_data[2], msg->payload, msg->len);
                     data_len += msg->len;
