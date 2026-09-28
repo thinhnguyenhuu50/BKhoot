@@ -162,27 +162,6 @@ void game_slave_submit_answer(int answer_idx) {
 // Main task loop
 void game_task_func(void *argument) {
     while(1) {
-        // Handle state machine logic that requires periodic update
-        switch (current_role) {
-            case GAME_ROLE_MASTER:
-                switch (current_state) {
-                    case GAME_STATE_LOBBY:
-                        // Mock player joining
-                        // gui_update_master_lobby_count(connected_players);
-                        break;
-                    case GAME_STATE_QUESTION:
-                        // UI handles timer independently via lv_timer
-                        break;
-                    default:
-                        break;
-                }
-                break;
-            case GAME_ROLE_SLAVE:
-                // UI handles timer independently via lv_timer
-                break;
-            default:
-                break;
-        }
         // Process incoming ESP-NOW messages from commQueue
         protocol_msg_t *rx_msg;
         if (osMessageQueueGet(commQueueHandle, &rx_msg, NULL, 0) == osOK) {
