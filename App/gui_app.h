@@ -14,6 +14,7 @@
 #include "scr_slave_waiting.h"
 #include "scr_slave_answer.h"
 #include "scr_slave_feedback.h"
+#include "scr_slave_timeup.h"
 
 #include "cmsis_os.h"
 

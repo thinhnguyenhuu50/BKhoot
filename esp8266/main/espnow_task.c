@@ -169,7 +169,7 @@ static void espnow_main_thread(void *arg) {
                 }
                 esp_now_send(target_mac, espnow_data, data_len);
 
-            } else if (msg->cmd == CMD_BROADCAST_QUESTION) {
+            } else if (msg->cmd == CMD_BROADCAST_QUESTION || msg->cmd == CMD_TIME_UP) {
                 // Unicast to every known slave instead of broadcasting, so each
                 // delivery is hardware-ACKed via espnow_send_cb.
                 if (msg->len > 0) {

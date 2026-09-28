@@ -22,7 +22,9 @@ static int connected_players = 0;
 static uint8_t player_macs[MAX_PLAYERS][6];
 static uint8_t player_scores[MAX_PLAYERS];
 static bool player_active[MAX_PLAYERS];
+static bool player_answered[MAX_PLAYERS]; // Nothing more to wait for from this player this question
 static int current_question_index = 0;
+static volatile bool master_timer_expired = false; // Set by the LVGL task, handled by the game task
 
 // Slave state
 #define MAX_HOSTS 10
@@ -115,7 +117,10 @@ static void master_broadcast_current_question(void) {
     uint32_t duration = question_bank[current_question_index].timeLimitSec * 1000;
     uint8_t payload[MAX_PAYLOAD];
     int offset = 0;
-    
+
+    memset(player_answered, 0, sizeof(player_answered));
+    master_timer_expired = false;
+
     memcpy(payload + offset, &duration, sizeof(uint32_t));
     offset += sizeof(uint32_t);
     
@@ -169,13 +174,38 @@ void game_master_next_question(void) {
     }
 }
 
-void game_master_timer_timeout(void) {
+// Ends the current question, because its time ran out or every player answered.
+// Slaves that got no feedback show "Time's up" and the host sees the results.
+// Only call this from the game task. The UI callbacks that change the role or state
+// already hold the LVGL lock, so checking the state under that lock can't race them.
+static void master_end_question(void) {
+    app_lv_lock();
     if(current_role == GAME_ROLE_MASTER && current_state == GAME_STATE_QUESTION) {
         current_state = GAME_STATE_RESULTS;
+        comm_send_cmd(CMD_TIME_UP, NULL, 0);
         PlayerRank_t ranking[MAX_PLAYERS];
         int count = master_build_ranking(ranking);
         gui_load_master_leaderboard_screen(ranking, count);
     }
+    app_lv_unlock();
+}
+
+// True once every connected player has answered. It needs at least one player,
+// otherwise an empty game would end every question as soon as it starts.
+static bool master_all_answered(void) {
+    int active_count = 0;
+    for (int i = 0; i < connected_players; i++) {
+        if (!player_active[i]) continue;
+        if (!player_answered[i]) return false;
+        active_count++;
+    }
+    return active_count > 0;
+}
+
+void game_master_timer_timeout(void) {
+    // Runs in the LVGL task; the game task ends the question so that
+    // "time ran out" and "everyone answered" can't both end it
+    master_timer_expired = true;
 }
 
 // Slave Callbacks
@@ -209,9 +239,10 @@ void game_slave_submit_answer(int answer_idx) {
 // Main task loop
 void game_task_func(void *argument) {
     while(1) {
-        // Process incoming ESP-NOW messages from commQueue
+        // Process incoming ESP-NOW messages from commQueue. Drain it every cycle:
+        // answers arrive in bursts and the queue only holds a few messages.
         protocol_msg_t *rx_msg;
-        if (osMessageQueueGet(commQueueHandle, &rx_msg, NULL, 0) == osOK) {
+        while (osMessageQueueGet(commQueueHandle, &rx_msg, NULL, 0) == osOK) {
             debug_log("RX ESP CMD:%02X, LEN:%d\r\n", rx_msg->cmd, rx_msg->len);
             
             switch (rx_msg->cmd) {
@@ -306,10 +337,21 @@ void game_task_func(void *argument) {
                             bool correct = rx_msg->payload[0];
                             current_score = rx_msg->payload[1];
                             app_lv_lock();
+                            current_state = GAME_STATE_RESULTS; // The CMD_TIME_UP that follows is ignored
                             gui_load_slave_feedback_screen(correct, current_score);
                             app_lv_unlock();
                             break;
                         }
+                        case CMD_TIME_UP:
+                            app_lv_lock();
+                            // No feedback yet: either we didn't answer, or the answer reached
+                            // the host after the question ended, so it didn't count
+                            if (current_state == GAME_STATE_QUESTION || current_state == GAME_STATE_FEEDBACK) {
+                                current_state = GAME_STATE_RESULTS;
+                                gui_load_slave_timeup_screen();
+                            }
+                            app_lv_unlock();
+                            break;
                         default:
                             break;
                     }
@@ -335,6 +377,8 @@ void game_task_func(void *argument) {
                                 app_lv_unlock();
                             }
                             player_active[idx] = true;
+                            // It joined mid-question and never got this question, so don't wait for its answer
+                            if (current_state == GAME_STATE_QUESTION) player_answered[idx] = true;
                             master_send_player_id(idx);
                             break;
                         }
@@ -348,18 +392,25 @@ void game_task_func(void *argument) {
                                     for (int i = 0; i < connected_players; i++) {
                                         if (player_active[i]) active_count++;
                                     }
+                                    // Stop waiting for the dropped player's answer
+                                    if (master_all_answered()) master_end_question();
                                 }
                             }
                             break;
                         }
                         case CMD_SUBMIT_ANSWER: {
+                            // Late answers don't count; the host already sent CMD_TIME_UP
+                            if (current_state != GAME_STATE_QUESTION) break;
                             if (rx_msg->len >= 7 && current_question_index < question_bank_size) {
+                                int player_idx = find_player_index(rx_msg->payload);
+                                if (player_idx >= 0 && player_answered[player_idx]) break; // Only the first answer counts
+
                                 uint8_t ans = rx_msg->payload[6];
                                 bool correct = (ans == question_bank[current_question_index].answerIndex);
 
-                                int player_idx = find_player_index(rx_msg->payload);
-                                if (correct && player_idx >= 0) {
-                                    player_scores[player_idx]++;
+                                if (player_idx >= 0) {
+                                    player_answered[player_idx] = true;
+                                    if (correct) player_scores[player_idx]++;
                                 }
                                 uint8_t score = (player_idx >= 0) ? player_scores[player_idx] : 0;
 
@@ -372,6 +423,9 @@ void game_task_func(void *argument) {
                                 memcpy(&fb_payload[6], feedback, 2);
 
                                 comm_send_cmd(CMD_SEND_FEEDBACK, fb_payload, 8);
+
+                                // Everyone answered before the timer ran out
+                                if (master_all_answered()) master_end_question();
                             }
                             break;
                         }
@@ -385,6 +439,11 @@ void game_task_func(void *argument) {
             // No vPortFree here since we use a static pool
         }
 
+        if (master_timer_expired) {
+            master_timer_expired = false;
+            master_end_question();
+        }
+
         osDelay(100); // Run every 100ms
     }
 }
@@ -392,7 +451,7 @@ void game_task_func(void *argument) {
 static protocol_parser_t parser;
 static uint8_t uart2_rx_buf[1];
 
-#define MSG_POOL_SIZE 4
+#define MSG_POOL_SIZE 10
 static protocol_msg_t msg_pool[MSG_POOL_SIZE];
 static uint8_t pool_idx = 0;
 

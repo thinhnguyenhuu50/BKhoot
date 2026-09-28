@@ -53,7 +53,7 @@ void game_slave_join_host(int host_id);
 // Slave submits an answer (0: Red, 1: Blue, 2: Yellow, 3: Green)
 void game_slave_submit_answer(int answer_idx);
 
-// Master timer finishes
+// Master timer finishes (called from the LVGL task, the game task then ends the question)
 void game_master_timer_timeout(void);
 
 // Send a command to the ESP8266 via UART2

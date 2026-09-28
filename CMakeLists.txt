@@ -83,6 +83,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/App/screens/slave_waiting/scr_slave_waiting.c
     ${CMAKE_SOURCE_DIR}/App/screens/slave_answer/scr_slave_answer.c
     ${CMAKE_SOURCE_DIR}/App/screens/slave_feedback/scr_slave_feedback.c
+    ${CMAKE_SOURCE_DIR}/App/screens/slave_timeup/scr_slave_timeup.c
     ${CMAKE_SOURCE_DIR}/Drivers/LCD/lcd.c
     ${CMAKE_SOURCE_DIR}/Drivers/Touch/touch.c
     ${CMAKE_SOURCE_DIR}/Drivers/EEPROM/at24c.c
@@ -104,6 +105,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/App/screens/slave_waiting
     ${CMAKE_SOURCE_DIR}/App/screens/slave_answer
     ${CMAKE_SOURCE_DIR}/App/screens/slave_feedback
+    ${CMAKE_SOURCE_DIR}/App/screens/slave_timeup
     ${CMAKE_SOURCE_DIR}/Drivers/LCD
     ${CMAKE_SOURCE_DIR}/Drivers/Touch
     ${CMAKE_SOURCE_DIR}/Drivers/EEPROM

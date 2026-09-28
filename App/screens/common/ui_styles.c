@@ -58,6 +58,12 @@ void init_styles(void) {
 }
 
 void home_btn_cb(lv_event_t * e) {
+    // The host can't go back to a game it left (picking Host again opens a new lobby),
+    // so drop the role, or answers still arriving could end the question and pull this
+    // board to the results screen
+    if (game_get_role() == GAME_ROLE_MASTER) {
+        game_set_role(GAME_ROLE_NONE);
+    }
     gui_load_role_selection_screen();
 }
 

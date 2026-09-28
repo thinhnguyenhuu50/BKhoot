@@ -25,6 +25,7 @@
 #define CMD_ESP_READY          0x0F
 #define CMD_ESP_LOG            0x10
 #define CMD_PLAYER_DROPPED     0x11
+#define CMD_TIME_UP            0x12
 
 typedef struct {
     uint8_t cmd;
