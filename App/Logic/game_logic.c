@@ -278,9 +278,9 @@ void game_task_func(void *argument) {
                             }
                             break;
                         case CMD_SUBMIT_ANSWER: {
-                            if (rx_msg->len >= 7) {
+                            if (rx_msg->len >= 7 && current_question_index < question_bank_size) {
                                 uint8_t ans = rx_msg->payload[6];
-                                bool correct = (ans == 1); // Mock validation
+                                bool correct = (ans == question_bank[current_question_index].answerIndex);
                                 
                                 uint8_t feedback[3];
                                 feedback[0] = correct;
