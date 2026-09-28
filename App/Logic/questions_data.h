@@ -22,7 +22,7 @@ typedef struct {
     uint8_t timeLimitSec;
 } Question_t;
 
-extern const Question_t question_bank[3];
+extern const Question_t question_bank[4];
 extern const uint16_t question_bank_size;
 
 #endif // __QUESTIONS_DATA_H__

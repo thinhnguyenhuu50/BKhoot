@@ -7,25 +7,32 @@
  */
 #include "questions_data.h"
 
-const uint16_t question_bank_size = 3;
+const uint16_t question_bank_size = 4;
 
-const Question_t question_bank[3] = {
+const Question_t question_bank[4] = {
     {
         .id = 1,
+        .question = "Who is the most handsome guy in this class?",
+        .options = { "Thinh", "Tri", "Vinh", "Unknown" },
+        .answerIndex = 0,
+        .timeLimitSec = 15
+    },
+    {
+        .id = 2,
         .question = "What does MCU stand for?",
         .options = { "Micro Computer Unit", "Microcontroller Unit", "Main Control Unit", "Motor Control Unit" },
         .answerIndex = 1,
         .timeLimitSec = 15
     },
     {
-        .id = 2,
+        .id = 3,
         .question = "Which architecture does the STM32F4 series use?",
         .options = { "ARM Cortex-M0", "ARM Cortex-M3", "ARM Cortex-M4", "RISC-V" },
         .answerIndex = 2,
         .timeLimitSec = 20
     },
     {
-        .id = 3,
+        .id = 4,
         .question = "What is the maximum clock speed of STM32F407?",
         .options = { "72 MHz", "168 MHz", "216 MHz", "480 MHz" },
         .answerIndex = 1,
