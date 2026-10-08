@@ -6,6 +6,7 @@
 
 static lv_obj_t * scr_master_lobby;
 static lv_obj_t * label_lobby_count = NULL;
+static lv_obj_t * label_lobby_name = NULL;
 
 static void master_start_quiz_cb(lv_event_t * e) {
     game_master_start_quiz();
@@ -21,10 +22,9 @@ void gui_load_master_lobby_screen(void) {
         lv_obj_add_style(header, &style_header_panel, 0);
         lv_obj_align(header, LV_ALIGN_TOP_MID, 0, 0);
 
-        lv_obj_t * title = lv_label_create(header);
-        lv_label_set_text(title, "Lobby");
-        lv_obj_add_style(title, &style_title, 0);
-        lv_obj_center(title);
+        label_lobby_name = lv_label_create(header);
+        lv_obj_add_style(label_lobby_name, &style_title, 0);
+        lv_obj_center(label_lobby_name);
 
         create_home_btn(scr_master_lobby, LV_ALIGN_TOP_LEFT, 10, 10);
 
@@ -42,6 +42,8 @@ void gui_load_master_lobby_screen(void) {
         lv_obj_add_event_cb(btn_start, master_start_quiz_cb, LV_EVENT_CLICKED, NULL);
     }
 
+    // The game task fills in the numbered name once it knows which ones are taken
+    lv_label_set_text(label_lobby_name, "Lobby");
     lv_label_set_text(label_lobby_count, "Players: 0");
 
     lv_scr_load_anim(scr_master_lobby, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
@@ -50,5 +52,11 @@ void gui_load_master_lobby_screen(void) {
 void gui_update_master_lobby_count(int count) {
     if(label_lobby_count != NULL) {
         lv_label_set_text_fmt(label_lobby_count, "Players: %d", count);
+    }
+}
+
+void gui_set_master_lobby_name(const char *name) {
+    if(label_lobby_name != NULL) {
+        lv_label_set_text(label_lobby_name, name);
     }
 }

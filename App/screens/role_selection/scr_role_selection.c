@@ -23,7 +23,7 @@ void gui_load_role_selection_screen(void) {
         lv_obj_add_style(scr_role_selection, &style_screen, 0);
 
         lv_obj_t * title = lv_label_create(scr_role_selection);
-        lv_label_set_text(title, "BKhoot");
+        lv_label_set_text(title, "BKahoot");
         lv_obj_add_style(title, &style_title, 0);
         lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 40);
 

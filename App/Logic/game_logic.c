@@ -27,6 +27,16 @@ static bool player_answered[MAX_PLAYERS]; // Nothing more to wait for from this 
 static int current_question_index = 0;
 static volatile bool master_timer_expired = false; // Set by the LVGL task, handled by the game task
 
+// A new host scans for the lobbies already on air and takes the lowest free number,
+// so every lobby gets a unique name: "BKahoot Lobby 1", "BKahoot Lobby 2", ...
+#define LOBBY_NAME_PREFIX    "BKahoot Lobby "
+#define HOST_NAMING_WINDOW_MS 500
+#define MAX_HOST_NUMBER       32
+static uint8_t host_number = 0; // 0 = not picked yet; the host stays hidden from scans until then
+static volatile bool host_naming = false;
+static uint32_t host_naming_deadline;
+static uint32_t host_numbers_taken; // Bit n-1 is set when another host answered as lobby n
+
 // Slave state
 #define MAX_HOSTS 10
 static int current_score = 0;
@@ -47,6 +57,11 @@ void game_set_role(GameRole_t role) {
             connected_players = 0;
             memset(player_scores, 0, sizeof(player_scores));
             memset(player_active, 0, sizeof(player_active));
+            host_number = 0;
+            host_numbers_taken = 0;
+            host_naming_deadline = osKernelGetTickCount() + HOST_NAMING_WINDOW_MS;
+            host_naming = true;
+            comm_send_cmd(CMD_SCAN_HOSTS, NULL, 0);
             break;
         case GAME_ROLE_SLAVE:
             current_state = GAME_STATE_INIT; // Scanning state
@@ -54,6 +69,7 @@ void game_set_role(GameRole_t role) {
             player_id = 0;
             break;
         default:
+            host_naming = false;
             break;
     }
 }
@@ -214,6 +230,23 @@ static bool master_all_answered(void) {
     return active_count > 0;
 }
 
+// The naming window is over: take the lowest lobby number no other host answered with.
+// Only call this from the game task, see master_end_question() for the locking.
+static void master_pick_lobby_name(void) {
+    app_lv_lock();
+    if (current_role == GAME_ROLE_MASTER && host_naming) {
+        host_naming = false;
+        host_number = 1;
+        while (host_number < MAX_HOST_NUMBER && (host_numbers_taken & (1UL << (host_number - 1)))) {
+            host_number++;
+        }
+        char name[32];
+        snprintf(name, sizeof(name), LOBBY_NAME_PREFIX "%d", host_number);
+        gui_set_master_lobby_name(name);
+    }
+    app_lv_unlock();
+}
+
 void game_master_timer_timeout(void) {
     // Runs in the LVGL task; the game task ends the question so that
     // "time ran out" and "everyone answered" can't both end it
@@ -287,7 +320,12 @@ void game_task_func(void *argument) {
                             } else {
                                 strcpy(name, "Unknown Host");
                             }
-                            if (discovered_hosts_count < MAX_HOSTS) {
+                            // Each host is listed once, however many times it answers
+                            bool known = false;
+                            for (int i = 0; i < discovered_hosts_count; i++) {
+                                if (memcmp(discovered_hosts[i], rx_msg->payload, 6) == 0) known = true;
+                            }
+                            if (!known && rx_msg->len >= 6 && discovered_hosts_count < MAX_HOSTS) {
                                 memcpy(discovered_hosts[discovered_hosts_count], rx_msg->payload, 6);
                                 app_lv_lock();
                                 gui_slave_add_host_to_list(name, discovered_hosts_count);
@@ -371,9 +409,26 @@ void game_task_func(void *argument) {
                 case GAME_ROLE_MASTER:
                     switch (rx_msg->cmd) {
                         case CMD_SCAN_HOSTS: {
-                            // Send CMD_HOST_FOUND with lobby name
-                            const char *lobby_name = "BKhoot Lobby";
-                            comm_send_cmd(CMD_HOST_FOUND, (uint8_t*)lobby_name, strlen(lobby_name) + 1);
+                            // Answer only the board that scanned: [target MAC(6)][lobby name].
+                            // A broadcast answer would also show up on every other scanning board.
+                            if (rx_msg->len < 6 || host_number == 0) break;
+                            uint8_t reply[6 + 32];
+                            memcpy(reply, rx_msg->payload, 6);
+                            int name_len = snprintf((char*)&reply[6], 32, LOBBY_NAME_PREFIX "%d", host_number) + 1;
+                            comm_send_cmd(CMD_HOST_FOUND, reply, 6 + name_len);
+                            break;
+                        }
+                        case CMD_HOST_FOUND: {
+                            // Another host answered our naming scan: [host MAC(6)][lobby name]
+                            size_t prefix_len = strlen(LOBBY_NAME_PREFIX);
+                            if (!host_naming || rx_msg->len <= 6 + prefix_len) break;
+                            rx_msg->payload[rx_msg->len - 1] = '\0';
+                            const char *name = (const char*)&rx_msg->payload[6];
+                            if (strncmp(name, LOBBY_NAME_PREFIX, prefix_len) != 0) break;
+                            int taken = atoi(name + prefix_len);
+                            if (taken >= 1 && taken <= MAX_HOST_NUMBER) {
+                                host_numbers_taken |= 1UL << (taken - 1);
+                            }
                             break;
                         }
                         case CMD_JOIN_HOST: {
@@ -449,6 +504,10 @@ void game_task_func(void *argument) {
                     break;
             }
             // No vPortFree here since we use a static pool
+        }
+
+        if (host_naming && (int32_t)(osKernelGetTickCount() - host_naming_deadline) >= 0) {
+            master_pick_lobby_name();
         }
 
         if (master_timer_expired) {

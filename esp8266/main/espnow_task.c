@@ -62,6 +62,17 @@ static peer_link_t *track_peer(const uint8_t *mac) {
     return p;
 }
 
+// Makes a MAC reachable by unicast without tracking its link quality.
+static void ensure_peer(const uint8_t *mac) {
+    if (!esp_now_is_peer_exist(mac)) {
+        esp_now_peer_info_t peerInfo = {};
+        memcpy(peerInfo.peer_addr, mac, 6);
+        peerInfo.channel = 1;
+        peerInfo.encrypt = false;
+        esp_now_add_peer(&peerInfo);
+    }
+}
+
 // Removes a peer whose link has gone bad and tells the STM32 so it can update the game/UI.
 static void drop_peer(const uint8_t *mac) {
     peer_link_t *p = find_tracked_peer(mac);
@@ -102,7 +113,7 @@ static void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int len
     // Let's create specific protocol frames for STM32
     protocol_msg_t out_msg;
 
-    if (msg.cmd == CMD_HOST_FOUND || msg.cmd == CMD_JOIN_HOST || msg.cmd == CMD_SUBMIT_ANSWER) {
+    if (msg.cmd == CMD_SCAN_HOSTS || msg.cmd == CMD_HOST_FOUND || msg.cmd == CMD_JOIN_HOST || msg.cmd == CMD_SUBMIT_ANSWER) {
         out_msg.cmd = msg.cmd;
         out_msg.len = 6 + msg.len;
         memcpy(out_msg.payload, mac_addr, 6);
@@ -118,7 +129,14 @@ static void espnow_recv_cb(const uint8_t *mac_addr, const uint8_t *data, int len
 // ESP-NOW Send Callback: this is our delivery ACK for unicast sends.
 static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status) {
     peer_link_t *p = find_tracked_peer(mac_addr);
-    if (p == NULL) return; // Untracked target (e.g. broadcast) - nothing to do.
+    if (p == NULL) {
+        // Untracked target: a broadcast, or a board we only answered a scan for.
+        // Free the scanner's peer slot again, the peer table is small.
+        if (memcmp(mac_addr, broadcast_mac, 6) != 0 && esp_now_is_peer_exist(mac_addr)) {
+            esp_now_del_peer(mac_addr);
+        }
+        return;
+    }
 
     if (status == ESP_NOW_SEND_SUCCESS) {
         p->miss_count = 0;
@@ -168,6 +186,23 @@ static void espnow_main_thread(void *arg) {
                     espnow_data[1] = 0;
                 }
                 esp_now_send(target_mac, espnow_data, data_len);
+
+            } else if (msg->cmd == CMD_HOST_FOUND && msg->len >= 6) {
+                // Payload is [scanner MAC(6)][lobby name]. Unicast the name to the board
+                // that scanned, so the other scanning boards don't list this host again.
+                // The scanner hasn't joined, so its link isn't tracked.
+                uint8_t target_mac[6];
+                memcpy(target_mac, msg->payload, 6);
+                espnow_data[1] = msg->len - 6;
+                memcpy(&espnow_data[2], &msg->payload[6], msg->len - 6);
+                data_len += (msg->len - 6);
+
+                ensure_peer(target_mac);
+                if (esp_now_send(target_mac, espnow_data, data_len) == ESP_ERR_ESPNOW_NOT_FOUND) {
+                    // espnow_send_cb freed the peer after an earlier answer; add it back
+                    ensure_peer(target_mac);
+                    esp_now_send(target_mac, espnow_data, data_len);
+                }
 
             } else if (msg->cmd == CMD_BROADCAST_QUESTION || msg->cmd == CMD_TIME_UP) {
                 // Unicast to every known slave instead of broadcasting, so each
